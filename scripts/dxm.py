@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 
 import rethinkdb as r
+from tornado import ioloop, gen
+from tornado.concurrent import Future, chain_future
+import functools
+import time
+
 import sys
 import struct
 import roslib
@@ -11,15 +16,13 @@ from sunset_ros_networking_msgs.msg import SunsetTransmission, SunsetReception, 
 
 
 class vehicle_info:
-    type_id_ = 2
-    id_shift_ = 5
-    status_shift_ = 3
-    id_mask_ = 224
-    status_mask_ = 24
-    intention_mask_ = 7
-    pack_fmt_ = 'BdddBL'
-    def __init__(self, id, lat, lon, depth, intention, status, timestamp):
-        self.id_ = id
+    type_id_ = 1
+    status_shift_ = 4
+    status_mask_ = 240
+    intention_mask_ = 15
+    pack_fmt_ = 'BQdddBBL'
+    def __init__(self, uid, lat, lon, depth, status, intention, timestamp):
+        self.uid_ = uid
         self.lat_ = lat
         self.lon_ = lon
         self.depth_ = depth
@@ -28,24 +31,35 @@ class vehicle_info:
         self.timestamp_ = timestamp
 
     def pack(self):
-        vinfo = 0
-        vinfo = vinfo | (self.id_ << self.id_shift_)
-        vinfo = vinfo | (self.status_ << self.status_shift_)
-        vinfo = vinfo | self.intention_
-        return struct.pack(self.pack_fmt_, self.type_id_, self.lat_, self.lon_, self.depth_, vinfo, self.timestamp_)
+        # vinfo = 0
+        # vinfo |= self.status_ << self.status_shift_
+        # vinfo |= self.intention_
+        return struct.pack(self.pack_fmt_, self.type_id_, self.uid_, self.lat_, self.lon_, self.depth_, self.status_, self.intention_, self.timestamp_)
 
 
 
 class target_info:
-    type_id_ = 1
-    def __init__(self, id, lat, lon, depth, vehicle_id, classification, timestamp):
-        self.id_ = id
+    type_id_ = 2
+    vehicle_shift_ = 4
+    vehicle_mask_ = 240
+    classification_mask_ = 15
+    pack_fmt_ = 'BQdddBBL'
+    def __init__(self, uid, lat, lon, depth, vehicle_id, classification, timestamp):
+        self.uid_ = uid
         self.lat_ = lat
         self.lon_ = lon
         self.depth_ = depth
         self.vehicle_id_ = vehicle_id
         self.classification_ = classification
         self.timestamp_ = timestamp
+
+    def pack(self):
+        # tinfo = 0
+        # tinfo |= self.vehicle_id_ << self.vehicle_shift_
+        # tinfo |= self.classification_
+        return struct.pack(self.pack_fmt_, self.type_id_, self.uid_, self.lat_, self.lon_, self.depth_, self.vehicle_id_, self.classification_, self.timestamp_)
+
+
 
 
 class Dxm:
@@ -56,14 +70,27 @@ class Dxm:
         self.msg_rec_sub_ = rospy.Subscriber('sunset_networking/sunset_reception_'+self.module_id_, SunsetReception, self.received_cb)
         self.notification_sub_ = rospy.Subscriber('sunset_networking/sunset_notification_'+self.module_id_, SunsetNotification, self.notification_cb)
         self.rate_ = rospy.Rate(10)  # 10hz
+        # Initialise the database by connecting and dropping any existing tables
+
+        r.set_loop_type("tornado")
+        self.connection = r.connect(host='localhost', port=28015)
 
     def received_cb(self, msg):
         # You received a message, get the payload, decode and decide what to do
         # Send an ack
-        pass
+        pack_fmt_ = 'BQdddBBL'
+        (type_id, uid, lat_, lon, depth, info1, info2, timestamp) = struct.unpack(pack_fmt_, msg.payload)
+        if type_id == 1:
+            vehicle = vehicle_info(type_id, uid, lat_, lon, depth, info1, info2, timestamp)
+        elif type_id == 2:
+            target = target_info(type_id, uid, lat_, lon, depth, info1, info2, timestamp)
+
 
     def notification_cb(self, msg):
         # Got a notiffication from sunset. Deal with that
+        pass
+
+    def gen_uid(self):
         pass
 
     def run(self):
