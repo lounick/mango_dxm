@@ -129,6 +129,8 @@ include_directories(
 
 ## Declare a C++ executable
 # add_executable(mango_dxm_node src/mango_dxm_node.cpp)
+add_executable(cpp_talker src/cpp_talker.cpp)
+add_executable(cpp_listener src/cpp_listener.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -138,6 +140,8 @@ include_directories(
 # target_link_libraries(mango_dxm_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(cpp_talker ${catkin_LIBRARIES})
+target_link_libraries(cpp_listener ${catkin_LIBRARIES})
 
 #############
 ## Install ##
