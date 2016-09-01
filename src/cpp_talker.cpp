@@ -69,14 +69,14 @@ class Talker {
 //        for (int i = 0; i < sizeof(converter.dbl); i++){
 //          payload.push_back(converter.bin[i]);
 //        }
-        payload.push_back(static_cast<uint8_t>(215));
-        payload.push_back(static_cast<uint8_t>(163));
-        payload.push_back(static_cast<uint8_t>(112));
-        payload.push_back(static_cast<uint8_t>(61));
-        payload.push_back(static_cast<uint8_t>(10));
-        payload.push_back(static_cast<uint8_t>(171));
-        payload.push_back(static_cast<uint8_t>(103));
-        payload.push_back(static_cast<uint8_t>(64));
+        payload.push_back(static_cast<uint8_t>(254));
+        payload.push_back(static_cast<uint8_t>(9));
+        payload.push_back(static_cast<uint8_t>(9));
+        payload.push_back(static_cast<uint8_t>(9));
+        payload.push_back(static_cast<uint8_t>(0));
+        payload.push_back(static_cast<uint8_t>(6));
+        payload.push_back(static_cast<uint8_t>(6));
+        payload.push_back(static_cast<uint8_t>(6));
         msg.node_address = 2;
         msg.payload = payload;
         msg_pub_.publish(msg);

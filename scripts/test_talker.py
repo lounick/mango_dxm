@@ -52,11 +52,11 @@ def main(argv):
             # msg.header.stamp = rospy.Time.now()
             msg.node_address = 2
             # payload = struct.pack('ccc', '0', '0', '3') WORKS
-            # payload = struct.pack('ddd', 3,0,0) FAILS
-            # payload = struct.pack('B', 3) WORKS
+            payload = struct.pack('ddd', 3,0,0) # FAILS
+            # payload = struct.pack('B', 3) # WORKS
             # payload = struct.pack('d', 189.345) WORKS
-            # payload = struct.pack('BBBBBBBB',215, 163, 112, 61, 10, 171, 103, 64) WORKS
-            # payload = struct.pack('BBBBBBBB', 254, 9, 9, 9, 0, 6, 6, 6) FAILS
+            payload = struct.pack('BBBBBBBB',215, 163, 112, 61, 10, 171, 103, 64) # WORKS
+            # payload = struct.pack('BBBBBBBB', 254, 9, 9, 9, 0, 6, 6, 6) # FAILS
             # payload = struct.pack('BQdddBBL',1,100,53,5,5,1,1,50) FAILS
             print type(payload)
             print type(msg.payload)
@@ -68,7 +68,7 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    if(len(sys.argv) < 3):
+    if(len(sys.argv) < 2):
         print "Usage: test_talker id [port]"
     else:
         main(sys.argv[1:])
