@@ -6,6 +6,9 @@ from tornado.concurrent import Future, chain_future
 import functools
 import time
 
+r.set_loop_type("tornado")
+connection = r.connect(host='localhost', port=28015)
+
 import sys
 import struct
 import roslib
@@ -72,8 +75,9 @@ class Dxm:
         self.rate_ = rospy.Rate(10)  # 10hz
         # Initialise the database by connecting and dropping any existing tables
 
-        r.set_loop_type("tornado")
-        self.connection = r.connect(host='localhost', port=28015)
+        # r.set_loop_type("tornado")
+        # self.connection = r.connect(host='localhost', port=28015)
+        self.connection_ = None
 
     def received_cb(self, msg):
         # You received a message, get the payload, decode and decide what to do
@@ -88,11 +92,42 @@ class Dxm:
 
     def notification_cb(self, msg):
         # Got a notiffication from sunset. Deal with that
-        pass
+        if msg.notification_type == 1:
+            if msg.notification_subtype == 1:
+                rospy.loginfo("Transmission started")
+            elif msg.notification_subtype == 2:
+                rospy.loginfo("Transmission finished")
+                self.msg_flag_ = False
+            elif msg.notification_subtype == 3:
+                rospy.loginfo("Transmission error")
+                self.msg_flag_ = False
+                # TODO: If you get an error here you shouldn't even wait for acks
+            else:
+                rospy.logerr("GOT WRONG NOTIFICATION SUBTYPE")
+        elif msg.notification_type == 2:
+            if msg.notification_subtype == 1:
+                rospy.logwarn("Wrong destination address (id)")
+            elif msg.notification_subtype == 2:
+                rospy.logwarn("Wrong payload length")
+            else:
+                rospy.logerr("GOT WRONG NOTIFICATION SUBTYPE")
+            self.msg_flag_ = False
+        else:
+            rospy.logerr("GOT WRONG NOTIFICATION TYPE SETTING FLAG TO ALLOW MESSAGES")
+            self.msg_flag_ = False
 
     def gen_uid(self):
         pass
 
+    @gen.coroutine
+    def rethink_vehicle_cb(self):
+        pass
+
+    @gen.coroutine
+    def rethink_target_cb(self):
+        pass
+
+    @gen.coroutine
     def run(self):
         while not rospy.is_shutdown():
             # Do stuff as described
@@ -108,7 +143,9 @@ def main(argv):
     rospy.init_node('dxm', anonymous=True)
     d = Dxm(module_id, port)
     try:
-        d.run()
+        ioloop.IOLoop.current().run_sync(d.run)
+        ioloop.IOLoop.current().start()
+        # d.run()
     except rospy.ROSInterruptException:
         pass
 
