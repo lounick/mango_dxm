@@ -16,7 +16,8 @@ roslib.load_manifest('mango_dxm')
 import rospy
 from std_msgs.msg import String
 from sunset_ros_networking_msgs.msg import SunsetTransmission, SunsetReception, SunsetNotification
-
+from mango_dxm.srv import *
+import json
 
 class vehicle_info:
     type_id_ = 1
@@ -24,14 +25,14 @@ class vehicle_info:
     status_mask_ = 240
     intention_mask_ = 15
     pack_fmt_ = 'BQdddBBL'
-    def __init__(self, uid, lat, lon, depth, status, intention, timestamp):
-        self.uid_ = uid
-        self.lat_ = lat
-        self.lon_ = lon
-        self.depth_ = depth
-        self.intention_ = intention
-        self.status_ = status
-        self.timestamp_ = timestamp
+    def __init__(self, id, lat, lon, depth, status, intention, timestamp):
+        self.id = id
+        self.lat = lat
+        self.lon = lon
+        self.depth = depth
+        self.intention = intention
+        self.status = status
+        self.timestamp = timestamp
 
     def pack(self):
         # vinfo = 0
@@ -40,21 +41,20 @@ class vehicle_info:
         return struct.pack(self.pack_fmt_, self.type_id_, self.uid_, self.lat_, self.lon_, self.depth_, self.status_, self.intention_, self.timestamp_)
 
 
-
 class target_info:
     type_id_ = 2
     vehicle_shift_ = 4
     vehicle_mask_ = 240
     classification_mask_ = 15
     pack_fmt_ = 'BQdddBBL'
-    def __init__(self, uid, lat, lon, depth, vehicle_id, classification, timestamp):
-        self.uid_ = uid
-        self.lat_ = lat
-        self.lon_ = lon
-        self.depth_ = depth
-        self.vehicle_id_ = vehicle_id
-        self.classification_ = classification
-        self.timestamp_ = timestamp
+    def __init__(self, id, lat, lon, depth, vehicle_id, classification, timestamp):
+        self.id = id
+        self.lat = lat
+        self.lon = lon
+        self.depth = depth
+        self.vehicle_id = vehicle_id
+        self.classification = classification
+        self.timestamp = timestamp
 
     def pack(self):
         # tinfo = 0
@@ -72,12 +72,34 @@ class Dxm:
         self.msg_pub_ = rospy.Publisher('sunset_networking/sunset_transmit_'+self.module_id_, SunsetTransmission, queue_size=10)
         self.msg_rec_sub_ = rospy.Subscriber('sunset_networking/sunset_reception_'+self.module_id_, SunsetReception, self.received_cb)
         self.notification_sub_ = rospy.Subscriber('sunset_networking/sunset_notification_'+self.module_id_, SunsetNotification, self.notification_cb)
+        self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
+
         self.rate_ = rospy.Rate(10)  # 10hz
         # Initialise the database by connecting and dropping any existing tables
 
         # r.set_loop_type("tornado")
         # self.connection = r.connect(host='localhost', port=28015)
         self.connection_ = None
+        self.db_ready_ = False
+
+    def init_db(self):
+        databases = r.db_list().run(self.connection_)
+        if "sunset" not in databases:
+            r.db_create("sunset").run(self.connection_)
+            self.connection_.use("sunset")
+            r.table_create("vehicles").run(self.connection_)
+            r.table_create("targets").run(self.connection_)
+        else:
+            self.connection_.use("sunset")
+            tables = r.table_list().run(self.connection_)
+            for t in tables:
+                r.table_drop(t).run(self.connection_)
+            for t in tables:
+                r.table_create(t).run(self.connection_)
+        self.db_ready_ = True
+
+    def handle_dbready(self, req):
+        return DBReadyResponse(self.db_ready_)
 
     def received_cb(self, msg):
         # You received a message, get the payload, decode and decide what to do
@@ -119,6 +141,9 @@ class Dxm:
     def gen_uid(self):
         pass
 
+    def insert_db(self, type, item):
+        pass
+
     @gen.coroutine
     def rethink_vehicle_cb(self):
         pass
@@ -129,6 +154,8 @@ class Dxm:
 
     @gen.coroutine
     def run(self):
+        self.connection_ = yield connection
+        self.init_db()
         while not rospy.is_shutdown():
             # Do stuff as described
             self.rate_.sleep()
