@@ -215,19 +215,36 @@ class Dxm:
                 rospy.logerr("Error updating in table: " + table + ". With error: " + res['first_error'])
 
     @gen.coroutine
-    def rethink_vehicle_cb(self):
+    def rethink_vehicle_cb(self, connection_future, table, feeds_ready):
         # We have a vehicle update. Queue it for transmission
-        pass
+        connection = yield connection_future
+        connection.use("sunset")
+        feed = yield r.table(table).changes().run(connection)
+        feeds_ready[table].set_result(True)
+        while (yield feed.fetch_next()):
+            item = yield feed.next()
+            if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
+                pass  # TODO: Decide what to do with it
 
     @gen.coroutine
-    def rethink_target_cb(self):
+    def rethink_target_cb(self,connection_future, table, feeds_ready):
         # We have a target update. Queue it for transmission
-        pass
+        connection = yield connection_future
+        connection.use("sunset")
+        feed = yield r.table(table).changes().run(connection)
+        feeds_ready[table].set_result(True)
+        while (yield feed.fetch_next()):
+            item = yield feed.next()
+            if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
+                pass  # TODO: Decide what to do with it
 
     @gen.coroutine
     def run(self):
         self.connection_ = yield connection
         self.init_db()
+        feeds_ready = {'vehicle':Future(), 'target':Future()}
+        ioloop.IOLoop.current().add_callback(self.rethink_vehicle_cb, connection, 'vehicle', feeds_ready)
+        ioloop.IOLoop.current().add_callback(self.rethink_target_cb, connection, 'target', feeds_ready)
         while not rospy.is_shutdown():
             # Do stuff as described
             self.rate_.sleep()
