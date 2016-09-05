@@ -68,6 +68,7 @@ class TargetInfo:
 class Dxm:
     def __init__(self, module_id, port):
         self.msg_flag_ = False
+        self.avail_nodes_ = []
         self.msg_count_ = 0
         self.module_id_ = module_id
         self.msg_pub_ = rospy.Publisher('sunset_networking/sunset_transmit_'+self.module_id_, SunsetTransmission, queue_size=10)
@@ -84,6 +85,10 @@ class Dxm:
         self.last_inserted_id_ = None
         self.last_timestamp_ = None
         self.db_ready_ = False
+
+        self.candidates_ = {}
+        self.transmitted_ = {}
+        self.finished_ = {}
 
     def init_db(self):
         databases = r.db_list().run(self.connection_)
@@ -111,19 +116,30 @@ class Dxm:
         msg_id = struct.unpack('L', msg.payload[0:4])
         type_id = struct.unpack('B', msg.payload[4])
         if type_id == 1:
-            (uid, lat_, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
-            vehicle = VehicleInfo(uid, lat_, lon, depth, info1, info2, timestamp)
+            (uid, lat, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
+            vehicle = VehicleInfo(uid, lat, lon, depth, info1, info2, timestamp)
             self.insert_db("vehicles", vehicle)
-            # TODO: Create an ack and send it
+            self.gen_and_send_ack(msg_id, msg.node_address)
         elif type_id == 2:
-            (uid, lat_, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
-            target = TargetInfo(uid, lat_, lon, depth, info1, info2, timestamp)
+            (uid, lat, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
+            target = TargetInfo(uid, lat, lon, depth, info1, info2, timestamp)
             self.insert_db("targets", target)
-            # TODO: Create an ack and send it
+            self.gen_and_send_ack(msg_id, msg.node_address)
         elif type_id == 3:
             # It is an ack for a message we sent. Add this to acked messages.
             acked_msg_id = struct.unpack('L', msg.payload[5:])
-            # TODO: Populate acked message list for message
+            if acked_msg_id in self.transmitted_:
+                self.transmitted_[acked_msg_id]['acked'].append(msg.node_address)
+                if len(self.transmitted_[acked_msg_id]['acked']) == len(self.transmitted_[acked_msg_id]['sent']):
+                    # Message was succsessfully received. Process that.
+                    self.finished_[acked_msg_id] = self.transmitted_[acked_msg_id]
+                    del self.transmitted_[acked_msg_id]
+                else:
+                    # Check for message TTL
+                    self.check_for_msg_ttl(acked_msg_id)
+            else:
+                # Got an ack for a message that is no longer valid. Too bad.
+                rospy.loginfo("Got an ack for a non valid message.")
 
     def notification_cb(self, msg):
         # Got a notification from sunset. Deal with that
@@ -153,6 +169,30 @@ class Dxm:
 
     def gen_uid(self):
         pass
+
+    def check_for_msg_ttl(self, msg_id):
+        for k, v in self.transmitted_.iteritems():
+            if v['TTL'] >= rospy.Time.now():
+                # Message expired.
+                # Check if we should insert it again into the queue
+                if v['id'] not in self.candidates_:
+                    rospy.loginfo("Message failed to transmit. Rescheduling transmission.")
+                    self.candidates_[v['id']] = v['priority']
+                else:
+                    rospy.loginfo("Message failed to transmit. Has obsolate info. Discarding.")
+                del self.transmitted_[k]
+
+    def gen_and_send_ack(self, msg_id, address):
+        payload = struct.pack('L', self.msg_count_)
+        payload += struct.pack('B', 3)
+        payload += struct.pack('L', msg_id)
+        msg = SunsetTransmission()
+        msg.payload = payload
+        msg.node_address = address
+        msg.header.stamp = rospy.Time.now()
+        self.msg_pub_.publish(msg)
+        self.msg_flag_ = True
+        self.msg_count_ += 1
 
     def insert_db(self, table, item):
         tmp_id = self.last_inserted_id_
