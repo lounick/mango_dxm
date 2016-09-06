@@ -95,25 +95,32 @@ class Dxm:
 
         self.mutex_ = Lock()
 
+    @gen.coroutine
     def init_db(self):
-        databases = r.db_list().run(self.connection_)
-        if "sunset" not in databases:
-            r.db_create("sunset").run(self.connection_)
-            self.connection_.use("sunset")
-            r.table_create("vehicles").run(self.connection_)
-            r.table_create("targets").run(self.connection_)
-        else:
-            self.connection_.use("sunset")
-            tables = r.table_list().run(self.connection_)
-            for t in tables:
-                r.table_drop(t).run(self.connection_)
-            for t in tables:
-                r.table_create(t).run(self.connection_)
-        self.db_ready_ = True
+        with (yield self.mutex_.acquire()):
+            f = r.db_list().run(self.connection_)
+            databases = yield f
+            if "sunset" not in databases:
+                r.db_create("sunset").run(self.connection_)
+                self.connection_.use("sunset")
+                r.table_create("vehicles").run(self.connection_)
+                r.table_create("targets").run(self.connection_)
+            else:
+                self.connection_.use("sunset")
+                f = r.table_list().run(self.connection_)
+                tables = yield f
+                for t in tables:
+                    r.table_drop(t).run(self.connection_)
+                for t in tables:
+                    r.table_create(t).run(self.connection_)
+            self.db_ready_ = True
+            self.mutex_.release()
 
+    @gen.coroutine
     def handle_dbready(self, req):
         return DBReadyResponse(self.db_ready_)
 
+    @gen.coroutine
     def received_cb(self, msg):
         # You received a message, get the payload, decode and decide what to do
         # Send an ack
@@ -152,6 +159,7 @@ class Dxm:
                 # Got an ack for a message that is no longer valid. Too bad.
                 rospy.loginfo("Got an ack for a non valid message.")
 
+    @gen.coroutine
     def notification_cb(self, msg):
         # Got a notification from sunset. Deal with that
         if msg.notification_type == 1:
@@ -181,6 +189,7 @@ class Dxm:
     def gen_uid(self):
         pass
 
+    @gen.coroutine
     def check_for_msg_ttl(self):
         for k, v in self.transmitted_.iteritems():
             if v['TTL'] >= rospy.Time.now():
@@ -193,57 +202,65 @@ class Dxm:
                     rospy.loginfo("Message failed to transmit. Has obsolate info. Discarding.")
                 del self.transmitted_[k]
 
+    @gen.coroutine
     def gen_and_send_ack(self, msg_id, address):
-        self.mutex_.acquire()
-        payload = struct.pack('L', self.msg_count_)
-        payload += struct.pack('B', 3)
-        payload += struct.pack('L', msg_id)
-        msg = SunsetTransmission()
-        msg.payload = payload
-        msg.node_address = address
-        msg.header.stamp = rospy.Time.now()
-        self.msg_pub_.publish(msg)
-        self.msg_flag_ = True
-        self.msg_count_ += 1
-        self.mutex_.release()
+        with(yield self.mutex_.acquire()):
+            payload = struct.pack('L', self.msg_count_)
+            payload += struct.pack('B', 3)
+            payload += struct.pack('L', msg_id)
+            msg = SunsetTransmission()
+            msg.payload = payload
+            msg.node_address = address
+            msg.header.stamp = rospy.Time.now()
+            self.msg_pub_.publish(msg)
+            self.msg_flag_ = True
+            self.msg_count_ += 1
+            self.mutex_.release()
 
+    @gen.coroutine
     def insert_db(self, table, item):
-        tmp_id = self.last_inserted_id_
-        tmp_ts = self.last_timestamp_
-        self.last_inserted_id_ = item.id
-        self.last_timestamp_ = item.timestamp
-        if r.table(table).get(item.id).run(self.connection_) is None:
-            # This vehicle doesn't exist. Insert into DB.
-            res = r.table(table).insert(item.__dict__).run(self.connection_)
-            if res['errors'] != 0:
-                self.last_inserted_id_ = tmp_id
-                self.last_timestamp_ = tmp_ts
-                rospy.logerr("Error inserting in table: " + table + ". With error: " + res['first_error'])
-        else:
-            # Vehicle exists in DB. Just update its info.
-            res = r.table(table).update(item.__dict__).run(self.connection_)
-            if res['errors'] != 0:
-                self.last_inserted_id_ = tmp_id
-                self.last_timestamp_ = tmp_ts
-                rospy.logerr("Error updating in table: " + table + ". With error: " + res['first_error'])
+        with (yield self.mutex_.acquire()):
+            tmp_id = self.last_inserted_id_
+            tmp_ts = self.last_timestamp_
+            self.last_inserted_id_ = item.id
+            self.last_timestamp_ = item.timestamp
+            if (yield r.table(table).get(item.id).run(self.connection_)) is None:
+                # This vehicle doesn't exist. Insert into DB.
+                res = r.table(table).insert(item.__dict__).run(self.connection_)
+                if res['errors'] != 0:
+                    self.last_inserted_id_ = tmp_id
+                    self.last_timestamp_ = tmp_ts
+                    rospy.logerr("Error inserting in table: " + table + ". With error: " + res['first_error'])
+            else:
+                # Vehicle exists in DB. Just update its info.
+                res = r.table(table).update(item.__dict__).run(self.connection_)
+                if res['errors'] != 0:
+                    self.last_inserted_id_ = tmp_id
+                    self.last_timestamp_ = tmp_ts
+                    rospy.logerr("Error updating in table: " + table + ". With error: " + res['first_error'])
+                    self.mutex_.release()
 
-    def get_db(self, table, uid):
-        item = None
-        record = r.table(table).get(uid).run(self.connection_)
-        if table == 'vehicles':
-            item = VehicleInfo(record['id'], record['lat'], record['lon'], record['depth'], record['intention'], record['status'], record['timestamp'])
-        elif table == 'targets':
-            item = TargetInfo(record['id'], record['lat'], record['lon'], record['depth'], record['vehicle_id'], record['classification'], record['timestamp'])
-        return item
-
+    @gen.coroutine
+    def get_db(self, table, uid, retval):
+        with (yield self.mutex_.acquire()):
+            item = None
+            record = yield r.table(table).get(uid).run(self.connection_)
+            if table == 'vehicles':
+                item = VehicleInfo(record['id'], record['lat'], record['lon'], record['depth'], record['intention'], record['status'], record['timestamp'])
+            elif table == 'targets':
+                item = TargetInfo(record['id'], record['lat'], record['lon'], record['depth'], record['vehicle_id'], record['classification'], record['timestamp'])
+            self.mutex_.release()
+            retval = item
 
     @gen.coroutine
     def rethink_vehicle_cb(self, connection_future, table, feeds_ready):
         # We have a vehicle update. Queue it for transmission
         connection = yield connection_future
-        connection.use("sunset")
-        feed = yield r.table(table).changes().run(connection)
-        feeds_ready[table].set_result(True)
+        with (yield self.mutex_.acquire()):
+            connection.use("sunset")
+            feed = yield r.table(table).changes().run(connection)
+            feeds_ready[table].set_result(True)
+            self.mutex_.release()
         while (yield feed.fetch_next()):
             item = yield feed.next()
             if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
@@ -253,9 +270,11 @@ class Dxm:
     def rethink_target_cb(self,connection_future, table, feeds_ready):
         # We have a target update. Queue it for transmission
         connection = yield connection_future
-        connection.use("sunset")
-        feed = yield r.table(table).changes().run(connection)
-        feeds_ready[table].set_result(True)
+        with (yield self.mutex_.acquire()):
+            connection.use("sunset")
+            feed = yield r.table(table).changes().run(connection)
+            feeds_ready[table].set_result(True)
+            self.mutex_.release()
         while (yield feed.fetch_next()):
             item = yield feed.next()
             if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
@@ -265,11 +284,12 @@ class Dxm:
     def run(self):
         self.connection_ = yield connection
         self.init_db()
-        feeds_ready = {'vehicle':Future(), 'target':Future()}
-        ioloop.IOLoop.current().add_callback(self.rethink_vehicle_cb, connection, 'vehicle', feeds_ready)
-        ioloop.IOLoop.current().add_callback(self.rethink_target_cb, connection, 'target', feeds_ready)
+        feeds_ready = {'vehicles':Future(), 'targets':Future()}
+        ioloop.IOLoop.current().add_callback(self.rethink_vehicle_cb, connection, 'vehicles', feeds_ready)
+        ioloop.IOLoop.current().add_callback(self.rethink_target_cb, connection, 'targets', feeds_ready)
         yield feeds_ready
         next_transmission = rospy.Time.now().secs + 10 + random.randint(-3,3)
+        res = yield r.table('vehicles').get(1).run(self.connection_)
         while not rospy.is_shutdown():
             self.check_for_msg_ttl()
             if rospy.Time.now().secs >= next_transmission:
@@ -280,32 +300,34 @@ class Dxm:
                     # Make a message
                     # Transmit it
                     # Claculate new transmission time
-                    candidate_v = 0
-                    candidate_key = 0
-                    for k in self.candidates_.iterkeys():
-                        v = self.candidates_[k]
-                        if v >= candidate_v:
-                            candidate_v = v
-                            candidate_key = k
-                    self.mutex_.acquire()
-                    payload = struct.pack('L', self.msg_count_)
-                    if candidate_v == 1:
-                        candidate = self.get_db('vehicles', candidate_key)
-                    elif candidate_v == 2:
-                        candidate = self.get_db('targets', candidate_key)
-                    payload += candidate.pack()
+                    if len(self.candidates_) > 0:
+                        candidate_v = 0
+                        candidate_key = 0
+                        for k in self.candidates_.iterkeys():
+                            v = self.candidates_[k]
+                            if v >= candidate_v:
+                                candidate_v = v
+                                candidate_key = k
+                        with (yield self.mutex_.acquire()):
+                            payload = struct.pack('L', self.msg_count_)
+                            candidate = None
+                            if candidate_v == 1:
+                                self.get_db('vehicles', candidate_key, candidate)
+                            elif candidate_v == 2:
+                                self.get_db('targets', candidate_key, candidate)
+                            payload += candidate.pack()
 
-                    msg = SunsetTransmission()
-                    msg.header = rospy.Time.now()
-                    msg.node_address = 0
-                    msg.payload = payload
-                    del self.candidates_[candidate_key]
-                    self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+180, 'id':candidate_key}
-                    self.msg_flag_ = True
-                    self.msg_pub_.publish(msg)
-                    self.msg_count_ += 1
-                    next_transmission = rospy.Time.now().secs + 10 + random.randint(-3,3)
-                    self.mutex_.release()
+                            msg = SunsetTransmission()
+                            msg.header = rospy.Time.now()
+                            msg.node_address = 0
+                            msg.payload = payload
+                            del self.candidates_[candidate_key]
+                            self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+180, 'id':candidate_key}
+                            self.msg_flag_ = True
+                            self.msg_pub_.publish(msg)
+                            self.msg_count_ += 1
+                            next_transmission = rospy.Time.now().secs + 10 + random.randint(-3,3)
+                            self.mutex_.release()
             self.rate_.sleep()
 
 
