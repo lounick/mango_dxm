@@ -289,7 +289,6 @@ class Dxm:
         ioloop.IOLoop.current().add_callback(self.rethink_target_cb, connection, 'targets', feeds_ready)
         yield feeds_ready
         next_transmission = rospy.Time.now().secs + 10 + random.randint(-3,3)
-        res = yield r.table('vehicles').get(1).run(self.connection_)
         while not rospy.is_shutdown():
             self.check_for_msg_ttl()
             if rospy.Time.now().secs >= next_transmission:
@@ -316,13 +315,15 @@ class Dxm:
                             elif candidate_v == 2:
                                 self.get_db('targets', candidate_key, candidate)
                             payload += candidate.pack()
-
+                            recipients[:] = self.avail_nodes_[:]
+                            recipients.remove(self.module_id_)
                             msg = SunsetTransmission()
                             msg.header = rospy.Time.now()
                             msg.node_address = 0
                             msg.payload = payload
                             del self.candidates_[candidate_key]
-                            self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+180, 'id':candidate_key}
+                            recipients = range(1,)
+                            self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+180, 'id':candidate_key, 'sent':recipients, 'acked':[]}
                             self.msg_flag_ = True
                             self.msg_pub_.publish(msg)
                             self.msg_count_ += 1
