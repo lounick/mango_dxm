@@ -95,19 +95,23 @@ class Dxm:
         return DBReadyResponse(self.db_ready_)
 
     def received_cb(self, msg):
+        print("Callback from sunset")
         msg_pack_fmt_ = '!QdddBBL'
-        msg_id = struct.unpack('!L', msg.payload[0:4])
-        type_id = struct.unpack('!B', msg.payload[4])
+        msg_id = struct.unpack('!L', msg.payload[0:4])[0]
+        type_id = struct.unpack('!B', msg.payload[4])[0]
+        print("msg ID: {0}; type_ID: {1}".format(msg_id,type_id))
         if msg.node_address not in self.avail_nodes_:
             self.avail_nodes_.append(msg.node_address)
         if type_id == 1:
             (uid, lat, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
             vehicle = VehicleInfo(uid, lat, lon, depth, info1, info2, timestamp)
+            print("received_cb: vehicle: {0}".format(vehicle))
             self.db_in_.put((type_id, vehicle))
             self.ack_out_.put((msg_id, msg.node_address))
         elif type_id == 2:
             (uid, lat, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
             target = TargetInfo(uid, lat, lon, depth, info1, info2, timestamp)
+            print("received_cb: target: {0}".format(target))
             self.db_in_.put((type_id, target))
             self.ack_out_.put((msg_id, msg.node_address))
         elif type_id == 3:
@@ -115,6 +119,7 @@ class Dxm:
             self.ack_in_.put((acked_msg_id, msg.node_address))
 
     def notification_cb(self, msg):
+        print("notification_cb method called")
         # Got a notification from sunset. Deal with that
         print msg.notification_type, msg.notification_subtype
         if msg.notification_type == 1:
