@@ -41,7 +41,7 @@ def insert_db(table, item):
 
 def main(argv):
     connection.use('sunset')
-    uid = argv[0]
+    uid = int(argv[0])
     v = VehicleInfo(uid, 0, 0, 0, 0, 0, 0)
     insert_db('vehicles', v)
 
