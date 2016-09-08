@@ -6,15 +6,14 @@ import threading
 import time
 import random
 
-import sys, traceback
-import struct
-import signal
+import traceback
 
 import rospy
 from sunset_ros_networking_msgs.msg import SunsetTransmission, SunsetReception, SunsetNotification
 from mango_dxm.srv import *
 import roslib
 roslib.load_manifest('mango_dxm')
+
 
 class VehicleInfo:
     type_id_ = 1
@@ -33,9 +32,6 @@ class VehicleInfo:
         self.timestamp = timestamp
 
     def pack(self):
-        # vinfo = 0
-        # vinfo |= self.status_ << self.status_shift_
-        # vinfo |= self.intention_
         return struct.pack(self.pack_fmt_, self.type_id_, self.id, self.lat, self.lon, self.depth, self.status, self.intention, self.timestamp)
 
 
@@ -56,9 +52,6 @@ class TargetInfo:
         self.timestamp = timestamp
 
     def pack(self):
-        # tinfo = 0
-        # tinfo |= self.vehicle_id_ << self.vehicle_shift_
-        # tinfo |= self.classification_
         return struct.pack(self.pack_fmt_, self.type_id_, self.id, self.lat, self.lon, self.depth, self.vehicle_id, self.classification, self.timestamp)
 
 
@@ -85,7 +78,7 @@ class Dxm:
         self.last_timestamp_ = None
         self.db_ready_ = False
 
-        self.next_transmission_ = rospy.Time.now().secs + 10 + random.randint(-3,3)
+        self.next_transmission_ = rospy.Time.now().secs + 10 + random.randint(-3, 3)
         self.candidates_ = {}
         self.transmitted_ = {}
         self.finished_ = {}
@@ -168,7 +161,7 @@ class Dxm:
     def process_ack_in(self):
         try:
             item = self.ack_in_.get(block=False)
-            self.process_ack(item[0],item[1])
+            self.process_ack(item[0], item[1])
             self.ack_in_.task_done()
         except Empty:
             pass
@@ -274,7 +267,7 @@ class Dxm:
                     payload += candidate.pack()
                     recipients = self.avail_nodes_[:]
                     msg = SunsetTransmission()
-                    msg.header = rospy.Time.now()
+                    msg.header.stamp = rospy.Time.now()
                     msg.node_address = 0
                     msg.payload = payload
                     del self.candidates_[candidate_k]
@@ -283,7 +276,7 @@ class Dxm:
                     self.msg_pub_.publish(msg)
                     self.msg_count_ += 1
                 # Claculate new transmission time
-                self.next_transmission_ = rospy.Time.now().secs + 10 + random.randint(-3,3)
+                self.next_transmission_ = rospy.Time.now().secs + 10 + random.randint(-3, 3)
 
     def get_db(self, table, uid):
         item = None
@@ -326,9 +319,9 @@ class Dxm:
                 print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    self.db_out_.put((item['new_val']['id'],1))
+                    self.db_out_.put((item['new_val']['id'], 1))
             except r.ReqlTimeoutError:
-                time.sleep(0.01) # Sleep thread
+                time.sleep(0.01)  # Sleep thread
 
     def rethink_target_cb(self):
         # We have a target update. Queue it for transmission
@@ -342,9 +335,9 @@ class Dxm:
                 print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    self.db_out_.put((item['new_val']['id'],2))
+                    self.db_out_.put((item['new_val']['id'], 2))
             except r.ReqlTimeoutError:
-                time.sleep(0.01) # Sleep thread for 10ms
+                time.sleep(0.01)  # Sleep thread for 10ms
 
     def run(self):
         self.connection_ = r.connect()
@@ -368,14 +361,9 @@ class Dxm:
                 traceback.print_exc(file=sys.stdout)
                 print '-'*60
                 raise e
-
-
-
         self.run_threads_ = False
-
         th1.join()
         th2.join()
-
 
 
 def main(argv):
@@ -390,8 +378,6 @@ def main(argv):
         d.run()
     except rospy.ROSException:
         pass
-
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
