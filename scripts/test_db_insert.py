@@ -29,8 +29,8 @@ class VehicleInfo:
         # vinfo |= self.intention_
         return struct.pack(self.pack_fmt_, self.type_id_, self.id, self.lat, self.lon, self.depth, self.status, self.intention, self.timestamp)
 
-def insert_db(table, item):
-    connection.use('sunset')
+def insert_db(table, item, db_num):
+    connection.use('sunset_'+str(db_num))
     if (r.table(table).get(item.id).run(connection)) is None:
         # This vehicle doesn't exist. Insert into DB.
         res = r.table(table).insert(item.__dict__).run(connection)
@@ -41,9 +41,10 @@ def insert_db(table, item):
 
 def main(argv):
     connection.use('sunset')
-    uid = int(argv[0])
+    uid = int(argv[1])
+    db_num = int(argv[0])
     v = VehicleInfo(uid, 0, 0, 0, 0, 0, 0)
-    insert_db('vehicles', v)
+    insert_db('vehicles', v, db_num)
 
 
 if __name__ == '__main__':

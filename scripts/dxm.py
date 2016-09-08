@@ -20,7 +20,7 @@ class VehicleInfo:
     status_shift_ = 4
     status_mask_ = 240
     intention_mask_ = 15
-    pack_fmt_ = 'BQdddBBL'
+    pack_fmt_ = '!BQdddBBL'
 
     def __init__(self, uid, lat, lon, depth, status, intention, timestamp):
         self.id = uid
@@ -40,7 +40,7 @@ class TargetInfo:
     vehicle_shift_ = 4
     vehicle_mask_ = 240
     classification_mask_ = 15
-    pack_fmt_ = 'BQdddBBL'
+    pack_fmt_ = '!BQdddBBL'
 
     def __init__(self, uid, lat, lon, depth, vehicle_id, classification, timestamp):
         self.id = uid
@@ -61,6 +61,7 @@ class Dxm:
         self.avail_nodes_ = []
         self.msg_count_ = 0
         self.module_id_ = module_id
+        self.db_name_ = "sunset_"+module_id
 
         self.msg_pub_ = rospy.Publisher('sunset_networking/sunset_transmit_'+self.module_id_, SunsetTransmission, queue_size=10)
         self.msg_rec_sub_ = rospy.Subscriber('sunset_networking/sunset_reception_'+self.module_id_, SunsetReception, self.received_cb)
@@ -82,6 +83,8 @@ class Dxm:
         self.candidates_ = {}
         self.transmitted_ = {}
         self.finished_ = {}
+        self.ttl_ = 180
+        self.transmit_period_ = 20
 
         self.db_in_ = Queue(maxsize=0)
         self.ack_in_ = Queue(maxsize=0)
@@ -92,9 +95,9 @@ class Dxm:
         return DBReadyResponse(self.db_ready_)
 
     def received_cb(self, msg):
-        msg_pack_fmt_ = 'QdddBBL'
-        msg_id = struct.unpack('L', msg.payload[0:4])
-        type_id = struct.unpack('B', msg.payload[4])
+        msg_pack_fmt_ = '!QdddBBL'
+        msg_id = struct.unpack('!L', msg.payload[0:4])
+        type_id = struct.unpack('!B', msg.payload[4])
         if msg.node_address not in self.avail_nodes_:
             self.avail_nodes_.append(msg.node_address)
         if type_id == 1:
@@ -113,6 +116,7 @@ class Dxm:
 
     def notification_cb(self, msg):
         # Got a notification from sunset. Deal with that
+        print msg.notification_type, msg.notification_subtype
         if msg.notification_type == 1:
             if msg.notification_subtype == 1:
                 rospy.loginfo("Transmission started")
@@ -176,11 +180,11 @@ class Dxm:
 
     def init_db(self):
         databases = r.db_list().run(self.connection_)
-        if "sunset" not in databases:
+        if self.db_name_ not in databases:
             print("Sunset db was not found. Creating.")
-            r.db_create("sunset").run(self.connection_)
+            r.db_create(self.db_name_).run(self.connection_)
             print("Database created")
-            self.connection_.use("sunset")
+            self.connection_.use(self.db_name_)
             print("Creating tables")
             r.table_create("vehicles").run(self.connection_)
             print(r.table_list().run(self.connection_))
@@ -190,7 +194,7 @@ class Dxm:
             print("Table targets created")
         else:
             print("Sunset db was found. Droping tables")
-            self.connection_.use("sunset")
+            self.connection_.use(self.db_name_)
             tables = r.table_list().run(self.connection_)
             print(tables)
             for t in tables:
@@ -220,9 +224,9 @@ class Dxm:
             del self.transmitted_[k]
 
     def gen_and_send_ack(self, msg_id, address):
-        payload = struct.pack('L', self.msg_count_)
-        payload += struct.pack('B', 3)
-        payload += struct.pack('L', msg_id)
+        payload = struct.pack('!L', self.msg_count_)
+        payload += struct.pack('!B', 3)
+        payload += struct.pack('!L', msg_id)
         msg = SunsetTransmission()
         msg.payload = payload
         msg.node_address = address
@@ -258,7 +262,7 @@ class Dxm:
                         if v >= candidate_v:
                             candidate_v = v
                             candidate_k = k
-                    payload = struct.pack('L', self.msg_count_)
+                    payload = struct.pack('!L', self.msg_count_)
                     candidate = None
                     if candidate_v == 1:
                         candidate = self.get_db('vehicles', candidate_k)
@@ -270,13 +274,14 @@ class Dxm:
                     msg.header.stamp = rospy.Time.now()
                     msg.node_address = 0
                     msg.payload = payload
+                    print("PAYLOAD LENGTH:" + str(len(payload)))
                     del self.candidates_[candidate_k]
-                    self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+1, 'id':candidate_k, 'priority':candidate_v, 'sent':recipients, 'acked':[]}
+                    self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+self.ttl_, 'id':candidate_k, 'priority':candidate_v, 'sent':recipients, 'acked':[]}
                     self.msg_flag_ = True
                     self.msg_pub_.publish(msg)
                     self.msg_count_ += 1
                 # Claculate new transmission time
-                self.next_transmission_ = rospy.Time.now().secs + 10 + random.randint(-3, 3)
+                self.next_transmission_ = rospy.Time.now().secs + self.transmit_period_ + random.randint(-3, 3)
 
     def get_db(self, table, uid):
         item = None
@@ -311,7 +316,7 @@ class Dxm:
         # We have a vehicle update. Queue it for transmission
         c = r.connect()
         print("Vehicle cb: Using sunset database")
-        c.use("sunset")
+        c.use(self.db_name_)
         feed = r.table('vehicles').changes().run(c)
         while self.run_threads_:
             try:
@@ -327,7 +332,7 @@ class Dxm:
         # We have a target update. Queue it for transmission
         c = r.connect()
         print("Target cb: Using sunset database")
-        c.use("sunset")
+        c.use(self.db_name_)
         feed = r.table('targets').changes().run(c)
         while self.run_threads_:
             try:
@@ -372,7 +377,7 @@ def main(argv):
         port = argv[1]
     else:
         port = 9000 + int(module_id)
-    rospy.init_node('dxm')
+    rospy.init_node('dxm_'+module_id)
     d = Dxm(module_id, port)
     try:
         d.run()
