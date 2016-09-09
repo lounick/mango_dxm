@@ -95,33 +95,33 @@ class Dxm:
         return DBReadyResponse(self.db_ready_)
 
     def received_cb(self, msg):
-        print("Callback from sunset")
+        rospy.loginfo("Callback from sunset")
         msg_pack_fmt_ = '!QdddBBL'
         msg_id = struct.unpack('!L', msg.payload[0:4])[0]
         type_id = struct.unpack('!B', msg.payload[4])[0]
-        print("msg ID: {0}; type_ID: {1}".format(msg_id,type_id))
+        rospy.loginfo("msg ID: {0}; type_ID: {1}".format(msg_id, type_id))
         if msg.node_address not in self.avail_nodes_:
             self.avail_nodes_.append(msg.node_address)
         if type_id == 1:
             (uid, lat, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
             vehicle = VehicleInfo(uid, lat, lon, depth, info1, info2, timestamp)
-            print("received_cb: vehicle: {0}".format(vehicle))
+            rospy.loginfo("received_cb: vehicle: {0}".format(vehicle))
             self.db_in_.put((type_id, vehicle))
             self.ack_out_.put((msg_id, msg.node_address))
         elif type_id == 2:
             (uid, lat, lon, depth, info1, info2, timestamp) = struct.unpack(msg_pack_fmt_, msg.payload[5:])
             target = TargetInfo(uid, lat, lon, depth, info1, info2, timestamp)
-            print("received_cb: target: {0}".format(target))
+            rospy.loginfo("received_cb: target: {0}".format(target))
             self.db_in_.put((type_id, target))
             self.ack_out_.put((msg_id, msg.node_address))
         elif type_id == 3:
-            acked_msg_id = struct.unpack('L', msg.payload[5:])
+            acked_msg_id = struct.unpack('L', msg.payload[5:])[0]
             self.ack_in_.put((acked_msg_id, msg.node_address))
 
     def notification_cb(self, msg):
-        print("notification_cb method called")
+        rospy.loginfo("notification_cb method called")
         # Got a notification from sunset. Deal with that
-        print msg.notification_type, msg.notification_subtype
+        # rospy.loginfo(msg.notification_type, msg.notification_subtype)
         if msg.notification_type == 1:
             if msg.notification_subtype == 1:
                 rospy.loginfo("Transmission started")
@@ -186,22 +186,22 @@ class Dxm:
     def init_db(self):
         databases = r.db_list().run(self.connection_)
         if self.db_name_ not in databases:
-            print("Sunset db was not found. Creating.")
+            rospy.loginfo("Sunset db was not found. Creating.")
             r.db_create(self.db_name_).run(self.connection_)
-            print("Database created")
+            rospy.loginfo("Database created")
             self.connection_.use(self.db_name_)
-            print("Creating tables")
+            rospy.loginfo("Creating tables")
             r.table_create("vehicles").run(self.connection_)
-            print(r.table_list().run(self.connection_))
-            print("Table Vehicles created")
+            rospy.loginfo(r.table_list().run(self.connection_))
+            rospy.loginfo("Table Vehicles created")
             r.table_create("targets").run(self.connection_)
-            print(r.table_list().run(self.connection_))
-            print("Table targets created")
+            rospy.loginfo(r.table_list().run(self.connection_))
+            rospy.loginfo("Table targets created")
         else:
-            print("Sunset db was found. Droping tables")
+            rospy.loginfo("Sunset db was found. Droping tables")
             self.connection_.use(self.db_name_)
             tables = r.table_list().run(self.connection_)
-            print(tables)
+            rospy.loginfo(tables)
             for t in tables:
                 r.table_drop(t).run(self.connection_)
             for t in tables:
@@ -210,7 +210,7 @@ class Dxm:
                 r.table_create("vehicles").run(self.connection_)
             if 'targets' not in tables:
                 r.table_create("targets").run(self.connection_)
-        print("Database initialised")
+        rospy.loginfo("Database initialised")
         self.db_ready_ = True
 
     def check_for_msg_ttl(self):
@@ -224,11 +224,12 @@ class Dxm:
                     to_remove.append(k)
                     self.candidates_[v['id']] = v['priority']
                 else:
-                    rospy.loginfo("Message failed to transmit. Has obsolate info. Discarding.")
+                    rospy.loginfo("Message failed to transmit. Has obsolete info. Discarding.")
         for k in to_remove:
             del self.transmitted_[k]
 
     def gen_and_send_ack(self, msg_id, address):
+        rospy.loginfo("Generating ack for message %s to address %s", msg_id, address)
         payload = struct.pack('!L', self.msg_count_)
         payload += struct.pack('!B', 3)
         payload += struct.pack('!L', msg_id)
@@ -242,6 +243,7 @@ class Dxm:
 
     def process_ack(self, acked_msg_id, address):
         # It is an ack for a message we sent. Add this to acked messages.
+        rospy.loginfo("Got ack for message %s from address %s", acked_msg_id, address)
         if acked_msg_id in self.transmitted_:
             self.transmitted_[acked_msg_id]['acked'].append(address)
             if set(self.transmitted_[acked_msg_id]['sent']).issubset(set(self.transmitted_[acked_msg_id]['acked'])):
@@ -281,6 +283,7 @@ class Dxm:
                     msg.payload = payload
                     print("PAYLOAD LENGTH:" + str(len(payload)))
                     del self.candidates_[candidate_k]
+                    rospy.loginfo("Transmitting message %s", self.msg_count_)
                     self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+self.ttl_, 'id':candidate_k, 'priority':candidate_v, 'sent':recipients, 'acked':[]}
                     self.msg_flag_ = True
                     self.msg_pub_.publish(msg)
@@ -298,6 +301,8 @@ class Dxm:
         return item
 
     def insert_db(self, table, item):
+        rospy.loginfo("Inserting item to db")
+        rospy.loginfo("%s",item)
         tmp_id = self.last_inserted_id_
         tmp_ts = self.last_timestamp_
         self.last_inserted_id_ = item.id
@@ -320,13 +325,14 @@ class Dxm:
     def rethink_vehicle_cb(self):
         # We have a vehicle update. Queue it for transmission
         c = r.connect()
-        print("Vehicle cb: Using sunset database")
+        rospy.loginfo("Vehicle cb: Using sunset database")
         c.use(self.db_name_)
         feed = r.table('vehicles').changes().run(c)
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                print(item)
+                rospy.loginfo("Following item retrieved from db")
+                rospy.loginfo("%s",item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     self.db_out_.put((item['new_val']['id'], 1))
@@ -336,13 +342,14 @@ class Dxm:
     def rethink_target_cb(self):
         # We have a target update. Queue it for transmission
         c = r.connect()
-        print("Target cb: Using sunset database")
+        rospy.loginfo("Target cb: Using sunset database")
         c.use(self.db_name_)
         feed = r.table('targets').changes().run(c)
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                print(item)
+                rospy.loginfo("Following item retireved from db")
+                rospy.loginfo("%s",item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     self.db_out_.put((item['new_val']['id'], 2))
