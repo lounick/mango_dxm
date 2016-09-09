@@ -179,13 +179,13 @@ class sauv_exec(object):
         th2 = threading.Thread(target=self.rethink_target_cb)
         th1.start()
         th2.start()
-
+        self.connection_.use(self.db_name_)
         self.UID_counter = 0
         self.synth_target_counter = 0
         finished_targets = False
 
         # Insert the SAUV initial details into rethinkDB
-        vehicle = VehicleInfo(CONFIG["VehicleUID"],0,0,0,0,CONFIG["intention"],rospy.get_time())
+        vehicle = VehicleInfo(2,0,0,0,0,0,rospy.Time.now().secs)
         self.insert_db("vehicles", vehicle)
         # generate lawnmower pattern/waypoints
         wps = self.generate_lawnmower()
