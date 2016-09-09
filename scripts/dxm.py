@@ -115,7 +115,7 @@ class Dxm:
             self.db_in_.put((type_id, target))
             self.ack_out_.put((msg_id, msg.node_address))
         elif type_id == 3:
-            acked_msg_id = struct.unpack('L', msg.payload[5:])[0]
+            acked_msg_id = struct.unpack('!L', msg.payload[5:])[0]
             self.ack_in_.put((acked_msg_id, msg.node_address))
 
     def notification_cb(self, msg):

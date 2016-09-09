@@ -85,6 +85,7 @@ class sauv_exec(object):
 
         self.pilot_pub = rospy.Publisher("/pilot/position_req", PilotRequest)
         self.nav_sub = rospy.Subscriber("/nav/nav_sts", NavSts, self.navCallback)
+        self.db_server_ready = rospy.ServiceProxy('db_ready', DBReady)
         self._nav = None
         self.start_time = time.time()
 
@@ -98,34 +99,9 @@ class sauv_exec(object):
         return DBReadyResponse(self.db_ready_)
 
     def init_db(self):
-        databases = r.db_list().run(self.connection_)
-        if self.db_name_ not in databases:
-            print("Sunset db was not found. Creating.")
-            r.db_create(self.db_name_).run(self.connection_)
-            print("Database created")
-            self.connection_.use(self.db_name_)
-            print("Creating tables")
-            r.table_create("vehicles").run(self.connection_)
-            print(r.table_list().run(self.connection_))
-            print("Table Vehicles created")
-            r.table_create("targets").run(self.connection_)
-            print(r.table_list().run(self.connection_))
-            print("Table targets created")
-        else:
-            print("Sunset db was found. Droping tables")
-            self.connection_.use(self.db_name_)
-            tables = r.table_list().run(self.connection_)
-            print(tables)
-            for t in tables:
-                r.table_drop(t).run(self.connection_)
-            for t in tables:
-                r.table_create(t).run(self.connection_)
-            if 'vehicles' not in tables:
-                r.table_create("vehicles").run(self.connection_)
-            if 'targets' not in tables:
-                r.table_create("targets").run(self.connection_)
-        print("Database initialised")
-        self.db_ready_ = True
+        while not self.db_server_ready():
+            rospy.sleep(0.1)
+
 
     def navCallback(self, msg):
         self._nav = msg
