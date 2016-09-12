@@ -181,7 +181,7 @@ class sauv_exec(object):
         th2.start()
         self.connection_.use(self.db_name_)
         self.UID_counter = 0
-        self.synth_target_counter = 0
+        self.synth_target_counter = 10
         finished_targets = False
 
         # Insert the SAUV initial details into rethinkDB
@@ -211,7 +211,7 @@ class sauv_exec(object):
                     # Time to insert a synthetic target into the database
                     print("Inserting synth target into RethinkDB")
                     target = TargetInfo(self.synth_target_counter, self._nav.position.north,
-                                        self._nav.position.east, 10, 0, 0, rospy.get_time())
+                                        self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
                     self.insert_db("targets", target)
 
                     # change this to the next time point for synthetic target insertion
