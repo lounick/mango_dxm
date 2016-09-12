@@ -108,7 +108,7 @@ class sauv_exec(object):
     def generate_lawnmower(self):
         fixes, cols = pattern_from_ned(CONFIG["lawnmower_area"], CONFIG["start_corner"],
                                        CONFIG["spacing"], CONFIG["overlap"])
-        print("Lawnmower Waypoints: {0}".format(fixes))
+        rospy.loginfo("Lawnmower Waypoints: %s", fixes)
         return list(fixes)
 
     def insert_db(self, table, item):
@@ -143,13 +143,13 @@ class sauv_exec(object):
     def rethink_vehicle_cb(self):
         # We have a vehicle update. Queue it for transmission
         c = r.connect()
-        print("Vehicle cb: Using sunset database")
+        rospy.loginfo("Vehicle cb: Using sunset database")
         c.use(self.db_name_)
         feed = r.table('vehicles').changes().run(c)
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                print(item)
+                rospy.loginfo("%s", item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     self.db_out_.put((item['new_val']['id'], 1))
@@ -159,13 +159,13 @@ class sauv_exec(object):
     def rethink_target_cb(self):
         # We have a target update. Queue it for transmission
         c = r.connect()
-        print("Target cb: Using sunset database")
+        rospy.loginfo("Target cb: Using sunset database")
         c.use(self.db_name_)
         feed = r.table('targets').changes().run(c)
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                print(item)
+                rospy.loginfo("%s", item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     self.db_out_.put((item['new_val']['id'], 2))
@@ -199,8 +199,8 @@ class sauv_exec(object):
                 _action_executing = True
                 pilotMsg = PilotRequest()
                 pilotMsg.position = wp
-                print("Action/WP Executing: {0}".format(wp))
-                print("please wait ...")
+                rospy.loginfo("Action/WP Executing: %s", wp)
+                rospy.loginfo("please wait ...")
                 self.pilot_pub.publish(pilotMsg)
             else:
                 # Do some other stuff to pass the time whilst checking to see if the action has completed yet
@@ -209,7 +209,7 @@ class sauv_exec(object):
                     not finished_targets:
                     # self.synth_target_counter < len(CONFIG["synthetic_target_insertion_times"]):
                     # Time to insert a synthetic target into the database
-                    print("Inserting synth target into RethinkDB")
+                    rospy.loginfo("Inserting synth target into RethinkDB")
                     target = TargetInfo(self.synth_target_counter, self._nav.position.north,
                                         self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
                     self.insert_db("targets", target)
@@ -220,19 +220,19 @@ class sauv_exec(object):
                     else:
                         finished_targets = True
                     # if self.synth_target_counter == len(CONFIG["synthetic_target_insertion_times"]):
-                    #     print("run out of targets ....")
+                    #     rospy.loginfo("run out of targets ....")
                     #     self.synth_target_counter = len(CONFIG["synthetic_target_insertion_times"]) - 1
 
                 # Check if the action/waypoint request has been completed
                 current_position = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
                 _action_completed = waypointReached(current_position, wp[0:3], 0.5)
                 if _action_completed:
-                    print("Action_completed: {0}".format(_action_completed))
+                    rospy.loginfo("Action_completed: %s", _action_completed)
                     _action_executing = False
                     _action_completed = False
 
             if len(wps) == 0:
-                print("All Actions Completed, shutting down ...")
+                rospy.loginfo("All Actions Completed, shutting down ...")
                 rospy.signal_shutdown("program finished")
             rospy.sleep(0.1)
 
@@ -248,8 +248,8 @@ if __name__=='__main__':
     module_id = sys.argv[1]
 
     executor = sauv_exec(module_id=module_id, test_executor=True)
-    print("Finished Init")
+    rospy.loginfo("Finished Init")
     executor.run()
 
-    print("Finished insertion into DB")
-    print("Closing Down")
+    rospy.loginfo("Finished insertion into DB")
+    rospy.loginfo("Closing Down")
