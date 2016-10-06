@@ -316,7 +316,7 @@ class Dxm:
                 rospy.logerr("Error inserting in table: " + table + ". With error: " + res['first_error'])
         else:
             # Vehicle exists in DB. Just update its info.
-            res = r.table(table).update(item.__dict__).run(self.connection_)
+            res = r.table(table).get(item.id).update(item.__dict__).run(self.connection_)
             if res['errors'] != 0:
                 self.last_inserted_id_ = tmp_id
                 self.last_timestamp_ = tmp_ts
