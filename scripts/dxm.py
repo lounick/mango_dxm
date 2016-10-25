@@ -63,9 +63,9 @@ class Dxm:
         self.module_id_ = module_id
         self.db_name_ = "sunset_"+module_id
 
-        self.msg_pub_ = rospy.Publisher('sunset_networking/sunset_transmit_'+self.module_id_, SunsetTransmission, queue_size=10)
-        self.msg_rec_sub_ = rospy.Subscriber('sunset_networking/sunset_reception_'+self.module_id_, SunsetReception, self.received_cb)
-        self.notification_sub_ = rospy.Subscriber('sunset_networking/sunset_notification_'+self.module_id_, SunsetNotification, self.notification_cb)
+        self.msg_pub_ = rospy.Publisher('/sunset_networking/sunset_transmit_'+self.module_id_, SunsetTransmission, queue_size=10)
+        self.msg_rec_sub_ = rospy.Subscriber('/sunset_networking/sunset_reception_'+self.module_id_, SunsetReception, self.received_cb)
+        self.notification_sub_ = rospy.Subscriber('/sunset_networking/sunset_notification_'+self.module_id_, SunsetNotification, self.notification_cb)
         self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
         self.rate_ = rospy.Rate(10)  # 10hz
