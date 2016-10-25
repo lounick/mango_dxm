@@ -83,8 +83,8 @@ class sauv_exec(object):
         self.db_name_ = "sunset_"+module_id
         self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
-        self.pilot_pub = rospy.Publisher("/pilot/position_req", PilotRequest)
-        self.nav_sub = rospy.Subscriber("/nav/nav_sts", NavSts, self.navCallback)
+        self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
+        self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
         self.db_server_ready = rospy.ServiceProxy('db_ready', DBReady)
         self._nav = None
         self.start_time = time.time()
@@ -185,7 +185,7 @@ class sauv_exec(object):
         finished_targets = False
 
         # Insert the SAUV initial details into rethinkDB
-        vehicle = VehicleInfo(2,0,0,0,0,0,rospy.Time.now().secs)
+        vehicle = VehicleInfo(self.module_id_,0,0,0,0,0,rospy.Time.now().secs)
         self.insert_db("vehicles", vehicle)
         # generate lawnmower pattern/waypoints
         wps = self.generate_lawnmower()
@@ -210,7 +210,7 @@ class sauv_exec(object):
                     # self.synth_target_counter < len(CONFIG["synthetic_target_insertion_times"]):
                     # Time to insert a synthetic target into the database
                     rospy.loginfo("Inserting synth target into RethinkDB")
-                    target = TargetInfo(self.synth_target_counter, self._nav.position.north,
+                    target = TargetInfo(self.synth_target_counter, self._nav.position.north, # FIXME: Not using proper uids
                                         self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
                     self.insert_db("targets", target)
 
