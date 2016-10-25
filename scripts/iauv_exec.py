@@ -7,7 +7,7 @@ import rospy
 import threading
 import rethinkdb as r
 import functools
-import time
+import time, sched
 import random
 
 # __init__.py must be in the same directory as this script, also any module that is calling it unless
@@ -83,8 +83,8 @@ class iauv_exec(object):
         self.db_name_ = "sunset_"+module_id
         self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
-        self.pilot_pub = rospy.Publisher("/pilot/position_req", PilotRequest)
-        self.nav_sub = rospy.Subscriber("/nav/nav_sts", NavSts, self.navCallback)
+        self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
+        self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
         self.db_server_ready = rospy.ServiceProxy('db_ready', DBReady)
         self._nav = None
         self.start_time = time.time()
@@ -94,8 +94,9 @@ class iauv_exec(object):
         self.last_inserted_id_ = None
         self.last_timestamp_ = None
         self.db_ready_ = False
-        self.wps = []
+        self.targets = []
         self.target_ids = []
+        self.scheduler_ = sched.scheduler(time.time, time.sleep)
 
     def handle_dbready(self, req):
         return DBReadyResponse(self.db_ready_)
@@ -104,9 +105,14 @@ class iauv_exec(object):
         while not self.db_server_ready():
             rospy.sleep(0.1)
 
-
     def navCallback(self, msg):
         self._nav = msg
+
+    def update_nav(self):
+        v = VehicleInfo(self.module_id_, self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
+        r.table("vehicles").get(self.module_id_).update(v.__dict__).run(self.connection_)
+        self.scheduler_.enter(30, 1, self.update_nav, ())
+
     def generate_lawnmower(self):
         fixes, cols = pattern_from_ned(CONFIG["lawnmower_area"], CONFIG["start_corner"],
                                        CONFIG["spacing"], CONFIG["overlap"])
@@ -170,7 +176,8 @@ class iauv_exec(object):
                 print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    self.wps.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],0,0,0])
+                    self.targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
+                                         item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
                     self.target_ids.append(item['new_val']['id'])
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
@@ -185,21 +192,22 @@ class iauv_exec(object):
         self.connection_.use(self.db_name_)
         self.UID_counter = 0
         self.synth_target_counter = 0
-        finished_targets = False
 
         # Insert the SAUV initial details into rethinkDB
-        vehicle = VehicleInfo(1,0,0,0,0,0,rospy.Time.now().secs)
+        vehicle = VehicleInfo(self.module_id_,0,0,0,0,0,rospy.Time.now().secs)
         self.insert_db("vehicles", vehicle)
-        # generate lawnmower pattern/waypoints
 
         _action_executing = False
         while self._nav is None and not rospy.is_shutdown():
             rospy.sleep(0.1)
+
+        self.scheduler_.enter(30, 1, self.update_nav, ())
+
         while not rospy.is_shutdown():
-            if len(self.wps) > 0:
+            if len(self.targets) > 0:
                 if not _action_executing:
                     # Take an action (waypoint) from the beginning of the list and send it to the pilot
-                    wp = self.wps.pop(0)
+                    wp = self.targets.pop(0)
                     target_id = self.target_ids.pop(0)
                     _action_executing = True
                     pilotMsg = PilotRequest()
@@ -214,8 +222,7 @@ class iauv_exec(object):
                     _action_completed = waypointReached(current_position, wp[0:3], 0.5)
                     if _action_completed:
                         print("Action_completed: {0}".format(_action_completed))
-                        target = TargetInfo(target_id, self._nav.position.north,
-                                            self._nav.position.east, 10, 1, 1, rospy.get_time())
+                        target = TargetInfo(target_id, wp[0], wp[1], wp[2], self.module_id_, 1, rospy.get_time())
                         self.insert_db("targets", target)
                         _action_executing = False
                         _action_completed = False
