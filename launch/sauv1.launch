@@ -1,0 +1,10 @@
+<launch>
+
+  <group ns="sauv1">
+  <node name="nav_sim" package="vehicle_core" type="node_nav_sim.py" />
+  <node name="pilot" package="vehicle_core" type="node_pilot.py" />
+  <node name="dxm" package="mango_dxm" type="dxm.py" args="1" />
+  <node name="exec" package="mango_dxm" type="sauv_exec.py" args="1" />
+  </group>
+
+</launch>
