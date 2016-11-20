@@ -77,6 +77,9 @@ def waypointReached(a_list, b_list, e):
            epsilonEquals(a_list[1], b_list[1], e) and \
            epsilonEquals(a_list[2], b_list[2], e)
 
+def eucledian_distance(a,b):
+    return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2
+
 class iauv_exec(object):
     def __init__(self, module_id=0, test_executor=False):
         self.module_id_ = module_id
@@ -98,6 +101,10 @@ class iauv_exec(object):
         self.target_ids = []
         self.scheduler_ = sched.scheduler(time.time, time.sleep)
 
+        self.vehicle_positions = {}
+        self.my_targets = []
+        self.my_targets_ids = []
+
     def handle_dbready(self, req):
         return DBReadyResponse(self.db_ready_)
 
@@ -107,6 +114,7 @@ class iauv_exec(object):
 
     def navCallback(self, msg):
         self._nav = msg
+        self.vehicle_positions[self.module_id_] = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
 
     def update_nav(self):
         v = VehicleInfo(self.module_id_, self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
@@ -160,7 +168,7 @@ class iauv_exec(object):
                 print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    pass # TODO: Fix me. Need to store other vehicle positions
+                    self.vehicle_positions[item['new_val']['id']] = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread
 
@@ -179,6 +187,19 @@ class iauv_exec(object):
                     self.targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
                                          item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
                     self.target_ids.append(item['new_val']['id'])
+                    min_dist = 1000000
+                    vid = -1
+                    target_pos = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
+                    for k, v in self.vehicle_positions.iteritems():
+                        dist = eucledian_distance(v,target_pos)
+                        if dist < min_dist:
+                            dist = min_dist
+                            vid = k
+                    if vid == self.module_id_:
+                        self.my_targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
+                                         item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
+                        self.my_targets_ids.append(item['new_val']['id'])
+                        self._action_executing = False
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
 
@@ -197,19 +218,19 @@ class iauv_exec(object):
         vehicle = VehicleInfo(self.module_id_,0,0,0,0,0,rospy.Time.now().secs)
         self.insert_db("vehicles", vehicle)
 
-        _action_executing = False
+        self._action_executing = False
         while self._nav is None and not rospy.is_shutdown():
             rospy.sleep(0.1)
 
         self.scheduler_.enter(30, 1, self.update_nav, ())
 
         while not rospy.is_shutdown():
-            if len(self.targets) > 0:
-                if not _action_executing:
+            if len(self.my_targets) > 0:
+                if not self._action_executing:
                     # Take an action (waypoint) from the beginning of the list and send it to the pilot
-                    wp = self.targets.pop(0)
-                    target_id = self.target_ids.pop(0)
-                    _action_executing = True
+                    wp = self.my_targets[0]
+                    target_id = self.my_targets_ids[0]
+                    self._action_executing = True
                     pilotMsg = PilotRequest()
                     pilotMsg.position = wp
                     print("Action/WP Executing: {0}".format(wp))
@@ -224,7 +245,9 @@ class iauv_exec(object):
                         print("Action_completed: {0}".format(_action_completed))
                         target = TargetInfo(target_id, wp[0], wp[1], wp[2], self.module_id_, 1, rospy.get_time())
                         self.insert_db("targets", target)
-                        _action_executing = False
+                        self.my_targets.pop(0)
+                        self.my_targets_ids.pop(0)
+                        self._action_executing = False
                         _action_completed = False
 
             rospy.sleep(0.1)
