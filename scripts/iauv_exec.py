@@ -82,7 +82,7 @@ def eucledian_distance(a,b):
 
 class iauv_exec(object):
     def __init__(self, module_id=0, test_executor=False):
-        self.module_id_ = module_id
+        self.module_id_ = int(module_id)
         self.db_name_ = "sunset_"+module_id
         self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
@@ -104,6 +104,8 @@ class iauv_exec(object):
         self.vehicle_positions = {}
         self.my_targets = []
         self.my_targets_ids = []
+        
+        self.nav_count_ = 0
 
     def handle_dbready(self, req):
         return DBReadyResponse(self.db_ready_)
@@ -115,11 +117,18 @@ class iauv_exec(object):
     def navCallback(self, msg):
         self._nav = msg
         self.vehicle_positions[self.module_id_] = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
+        self.nav_count_ += 1
+        if self.nav_count_ > 600:
+            self.update_nav()
+            self.nav_count_ = 0
 
     def update_nav(self):
-        v = VehicleInfo(self.module_id_, self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
+        print(type(self.module_id_))
+        print(type(int(self.module_id_)))
+        v = VehicleInfo(int(self.module_id_), self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
         r.table("vehicles").get(self.module_id_).update(v.__dict__).run(self.connection_)
-        self.scheduler_.enter(30, 1, self.update_nav, ())
+        #self.scheduler_.enter(30, 1, self.update_nav, ())
+        #threading.Timer(30, self.update_nav, ()).start()
 
     def generate_lawnmower(self):
         fixes, cols = pattern_from_ned(CONFIG["lawnmower_area"], CONFIG["start_corner"],
@@ -215,14 +224,15 @@ class iauv_exec(object):
         self.synth_target_counter = 0
 
         # Insert the SAUV initial details into rethinkDB
-        vehicle = VehicleInfo(self.module_id_,0,0,0,0,0,rospy.Time.now().secs)
+        vehicle = VehicleInfo(int(self.module_id_),0,0,0,0,0,rospy.Time.now().secs)
         self.insert_db("vehicles", vehicle)
 
         self._action_executing = False
         while self._nav is None and not rospy.is_shutdown():
             rospy.sleep(0.1)
 
-        self.scheduler_.enter(30, 1, self.update_nav, ())
+        #self.scheduler_.enter(30, 1, self.update_nav, ())
+        #threading.Timer(30, self.update_nav, ()).start()
 
         while not rospy.is_shutdown():
             if len(self.my_targets) > 0:
