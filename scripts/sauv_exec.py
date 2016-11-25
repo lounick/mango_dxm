@@ -14,6 +14,7 @@ import random
 # this is put on PYTHONPATH environment variable
 from lawnmower_generator import *
 from vehicle_interface.msg import PilotRequest, Vector6
+from vehicle_interface.srv import BooleanService
 from auv_msgs.msg import NavSts
 from mango_dxm.srv import *
 
@@ -81,11 +82,13 @@ class sauv_exec(object):
     def __init__(self, module_id=0, test_executor=False):
         self.module_id_ = module_id
         self.db_name_ = "sunset_"+module_id
-        self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
         self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
         self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
+        rospy.wait_for_service('db_ready')
         self.db_server_ready = rospy.ServiceProxy('db_ready', DBReady)
+        rospy.wait_for_service('pilot/switch')
+        self.pilot_switch = rospy.ServiceProxy('pilot/switch', BooleanService)
         self._nav = None
         self.start_time = time.time()
 
@@ -93,13 +96,13 @@ class sauv_exec(object):
         self.run_threads_ = True
         self.last_inserted_id_ = None
         self.last_timestamp_ = None
-        self.db_ready_ = False
 
-    def handle_dbready(self, req):
-        return DBReadyResponse(self.db_ready_)
+        self.vehicle_positions = {}
 
     def init_db(self):
+        rospy.logerr("@@@@@@@@@@@@@@@ Waiting for DB!")
         while not self.db_server_ready():
+            rospy.logerr("@@@@@@@@@@@@@@@ Waiting for DB!")
             rospy.sleep(0.1)
 
 
@@ -143,16 +146,16 @@ class sauv_exec(object):
     def rethink_vehicle_cb(self):
         # We have a vehicle update. Queue it for transmission
         c = r.connect()
-        rospy.loginfo("Vehicle cb: Using sunset database")
+        rospy.loginfo("Vehicle cb: Using sunset database %s", self.db_name_)
         c.use(self.db_name_)
-        feed = r.table('vehicles').changes().run(c)
+        feed = r.table("vehicles").changes().run(c)
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
                 rospy.loginfo("%s", item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    self.db_out_.put((item['new_val']['id'], 1))
+                    self.vehicle_positions[item['new_val']['id']] = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread
 
@@ -161,37 +164,41 @@ class sauv_exec(object):
         c = r.connect()
         rospy.loginfo("Target cb: Using sunset database")
         c.use(self.db_name_)
-        feed = r.table('targets').changes().run(c)
+        feed = r.table("targets").changes().run(c)
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
                 rospy.loginfo("%s", item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    self.db_out_.put((item['new_val']['id'], 2))
+                    rospy.loginfo("Vehicle %s classified target %s", item['new_val']['vehicle_id'], item['new_val']['id'])
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
 
     def run(self):
         self.connection_ = r.connect()
+        rospy.logerr("BEFOREeeeeeeeeeeeeeeeeeeeeeee")
         self.init_db()
+        rospy.logerr("AFTER!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         th1 = threading.Thread(target=self.rethink_vehicle_cb)
         th2 = threading.Thread(target=self.rethink_target_cb)
         th1.start()
         th2.start()
         self.connection_.use(self.db_name_)
         self.UID_counter = 0
-        self.synth_target_counter = 10
+        self.synth_target_counter = 0
         finished_targets = False
 
         # Insert the SAUV initial details into rethinkDB
         vehicle = VehicleInfo(self.module_id_,0,0,0,0,0,rospy.Time.now().secs)
-        self.insert_db("vehicles", vehicle)
+        # self.insert_db("vehicles", vehicle)
         # generate lawnmower pattern/waypoints
         wps = self.generate_lawnmower()
         _action_executing = False
         while self._nav is None and not rospy.is_shutdown():
+            print("@@@@@@@@@@@@@@@ Waiting for NAV!")
             rospy.sleep(0.1)
+        self.pilot_switch(True)
         while not rospy.is_shutdown():
             if len(wps) > 0 and not _action_executing:
                 # Take an action (waypoint) from the beginning of the list and send it to the pilot
