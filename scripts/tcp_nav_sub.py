@@ -8,8 +8,8 @@ from auv_msgs.msg import NavSts
 import sys
 import zmq
 
-IPs = {"sauv1": {"ip": "//localhost", "port": 5556, "filter": "10001"},
-       "iauv1": {"ip": "//localhost", "port": 5546, "filter": "10001"}}
+IPs = {"sauv1": {"ip": "tcp://137.195.182.62", "port": 5556, "filter": "10001"},
+       "iauv1": {"ip": "tcp://localhost", "port": 5546, "filter": "10001"}}
 
 class TCPSubscriber(object):
     def __init__(self):
@@ -18,7 +18,7 @@ class TCPSubscriber(object):
         self.socket = context.socket(zmq.SUB)
         self.ros_publisher_objects = {}
         for key, value in IPs.iteritems():
-            self.socket.connect ("tcp:{0}:{1}".format(value["ip"], value["port"]))
+            self.socket.connect("{0}:{1}".format(value["ip"], value["port"]))
             self.socket.setsockopt(zmq.SUBSCRIBE, value["filter"])
 
             self.ros_publisher_objects[key] = rospy.Publisher("/{0}/odometry".format(key), Odometry, queue_size=1)
