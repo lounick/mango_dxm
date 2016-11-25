@@ -14,6 +14,7 @@ import random
 # this is put on PYTHONPATH environment variable
 from lawnmower_generator import *
 from vehicle_interface.msg import PilotRequest, Vector6
+from vehicle_interface.srv import BooleanService
 from auv_msgs.msg import NavSts
 from mango_dxm.srv import *
 
@@ -84,11 +85,7 @@ class iauv_exec(object):
     def __init__(self, module_id=0, test_executor=False):
         self.module_id_ = int(module_id)
         self.db_name_ = "sunset_"+module_id
-        self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
-        self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
-        self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
-        self.db_server_ready = rospy.ServiceProxy('db_ready', DBReady)
         self._nav = None
         self.start_time = time.time()
 
@@ -107,11 +104,19 @@ class iauv_exec(object):
         
         self.nav_count_ = 0
 
+        self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
+        self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
+        rospy.wait_for_service('db_ready')
+        self.db_server_ready = rospy.ServiceProxy('db_ready', DBReady)
+        rospy.wait_for_service('pilot/switch')
+        self.pilot_switch = rospy.ServiceProxy('pilot/switch', BooleanService)
+
     def handle_dbready(self, req):
         return DBReadyResponse(self.db_ready_)
 
     def init_db(self):
         while not self.db_server_ready():
+            print("@@@@@@@@@@@@@@@@@@@@@ Waiting for DB!")
             rospy.sleep(0.1)
 
     def navCallback(self, msg):
