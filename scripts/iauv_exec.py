@@ -228,17 +228,19 @@ class iauv_exec(object):
         self.UID_counter = 0
         self.synth_target_counter = 0
 
-        # Insert the SAUV initial details into rethinkDB
-        vehicle = VehicleInfo(int(self.module_id_),0,0,0,0,0,rospy.Time.now().secs)
-        self.insert_db("vehicles", vehicle)
-
         self._action_executing = False
         while self._nav is None and not rospy.is_shutdown():
+            print("@@@@@@@@@@@@@@@ Waiting for NAV!")
             rospy.sleep(0.1)
-
+        # Insert the SAUV initial details into rethinkDB
+        pilotMsg = PilotRequest()
+        pilotMsg.position = [random.randint(1, 3), random.randint(1, 3), 0, 0, 0, 0]
+        self.pilot_pub.publish(pilotMsg)
+        vehicle = VehicleInfo(int(self.module_id_), self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
+        self.insert_db("vehicles", vehicle)
         #self.scheduler_.enter(30, 1, self.update_nav, ())
         #threading.Timer(30, self.update_nav, ()).start()
-
+        self.pilot_switch(True)
         while not rospy.is_shutdown():
             if len(self.my_targets) > 0:
                 if not self._action_executing:
