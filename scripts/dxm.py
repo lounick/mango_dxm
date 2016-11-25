@@ -66,7 +66,8 @@ class Dxm:
         self.msg_pub_ = rospy.Publisher('/sunset_networking/sunset_transmit_'+self.module_id_, SunsetTransmission, queue_size=10)
         self.msg_rec_sub_ = rospy.Subscriber('/sunset_networking/sunset_reception_'+self.module_id_, SunsetReception, self.received_cb)
         self.notification_sub_ = rospy.Subscriber('/sunset_networking/sunset_notification_'+self.module_id_, SunsetNotification, self.notification_cb)
-        self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
+        self.db_ready_ = False
+        # self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
         self.rate_ = rospy.Rate(10)  # 10hz
         # Initialise the database by connecting and dropping any existing tables
@@ -77,7 +78,7 @@ class Dxm:
         self.run_threads_ = True
         self.last_inserted_id_ = None
         self.last_timestamp_ = None
-        self.db_ready_ = False
+
 
         self.next_transmission_ = rospy.Time.now().secs + 10 + random.randint(-3, 3)
         self.candidates_ = {}
@@ -188,7 +189,7 @@ class Dxm:
         if self.db_name_ not in databases:
             rospy.loginfo("Sunset db was not found. Creating.")
             r.db_create(self.db_name_).run(self.connection_)
-            rospy.loginfo("Database created")
+            rospy.loginfo("Database %s created", self.db_name_)
             self.connection_.use(self.db_name_)
             rospy.loginfo("Creating tables")
             r.table_create("vehicles").run(self.connection_)
@@ -210,8 +211,9 @@ class Dxm:
                 r.table_create("vehicles").run(self.connection_)
             if 'targets' not in tables:
                 r.table_create("targets").run(self.connection_)
-        rospy.loginfo("Database initialised")
+        rospy.logerr("Database initialised")
         self.db_ready_ = True
+        self.db_ready_srv_ = rospy.Service('db_ready', DBReady, self.handle_dbready)
 
     def check_for_msg_ttl(self):
         to_remove = []
