@@ -9,6 +9,8 @@ import rethinkdb as r
 import functools
 import time, sched
 import random
+import math
+from copy import deepcopy
 
 # __init__.py must be in the same directory as this script, also any module that is calling it unless
 # this is put on PYTHONPATH environment variable
@@ -79,7 +81,7 @@ def waypointReached(a_list, b_list, e):
            epsilonEquals(a_list[2], b_list[2], e)
 
 def eucledian_distance(a,b):
-    return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2
+    return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
 
 class iauv_exec(object):
     def __init__(self, module_id=0, test_executor=False):
@@ -198,22 +200,27 @@ class iauv_exec(object):
                 print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    self.targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
+                    if item['new_val']['classification'] == 1:
+                        pass
+                    else:
+                        self.targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
                                          item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
-                    self.target_ids.append(item['new_val']['id'])
-                    min_dist = 1000000
-                    vid = -1
-                    target_pos = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
-                    for k, v in self.vehicle_positions.iteritems():
-                        dist = eucledian_distance(v,target_pos)
-                        if dist < min_dist:
-                            dist = min_dist
-                            vid = k
-                    if vid == self.module_id_:
-                        self.my_targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
+                        self.target_ids.append(item['new_val']['id'])
+                        min_dist = 1000000
+                        vid = -1
+                        target_pos = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
+                        for k, v in self.vehicle_positions.iteritems():
+                            dist = eucledian_distance(v,target_pos)
+                            rospy.loginfo("Distance from vehicle %s with pos %s is %s", k, v, dist) 
+                            if dist < min_dist:
+                                min_dist = deepcopy(dist)
+                                vid = k
+                        rospy.loginfo("Assigning to %s", vid)
+                        if vid == self.module_id_:
+                            self.my_targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
                                          item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
-                        self.my_targets_ids.append(item['new_val']['id'])
-                        self._action_executing = False
+                            self.my_targets_ids.append(item['new_val']['id'])
+                            self._action_executing = False
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
 
