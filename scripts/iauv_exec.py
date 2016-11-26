@@ -125,7 +125,7 @@ class iauv_exec(object):
         self._nav = msg
         self.vehicle_positions[self.module_id_] = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
         self.nav_count_ += 1
-        if self.nav_count_ > 600:
+        if self.nav_count_ > 300:
             self.update_nav()
             self.nav_count_ = 0
 
