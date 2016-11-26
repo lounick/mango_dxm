@@ -81,7 +81,7 @@ def waypointReached(a_list, b_list, e):
 class sauv_exec(object):
     def __init__(self, module_id=0, test_executor=False):
         self.module_id_ = module_id
-        self.db_name_ = "sunset_"+module_id
+        self.db_name_ = "sunset_"+str(module_id)
 
         self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
         self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
@@ -252,7 +252,7 @@ class sauv_exec(object):
 
 if __name__=='__main__':
     rospy.init_node("sauv_executor")
-    module_id = sys.argv[1]
+    module_id = int(sys.argv[1])
 
     executor = sauv_exec(module_id=module_id, test_executor=True)
     rospy.loginfo("Finished Init")
