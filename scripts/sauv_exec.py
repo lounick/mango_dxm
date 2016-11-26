@@ -23,14 +23,14 @@ import struct
 CONFIG = {
     "VehicleUID": 0,
     "intention": "sauv",
-    "lawnmower_area": np.array([[0, 0, 2],
-                               [0, 20, 2],
-                               [-20, 20, 2],
-                               [-20, 0, 2]]),
+    "lawnmower_area": np.array([[15, -15, 2],
+                               [15, 15, 2],
+                               [-15, 15, 2],
+                               [-15, -15, 2]]),
     "start_corner": 0,
     "spacing": 5,
     "overlap": 0,
-    "synthetic_target_insertion_times": [1, 2, 3]  #in minutes
+    "synthetic_target_insertion_times": [1, 2, 3, 4, 5, 6]  #in minutes
 }
 
 class VehicleInfo:
@@ -222,7 +222,8 @@ class sauv_exec(object):
                     self.insert_db("targets", target)
 
                     # change this to the next time point for synthetic target insertion
-                    if self.synth_target_counter + 1 != len(CONFIG["synthetic_target_insertion_times"]):
+                    #if self.synth_target_counter + 1 != len(CONFIG["synthetic_target_insertion_times"]):
+                    if CONFIG["synthetic_target_insertion_times"][self.synth_target_counter] != CONFIG["synthetic_target_insertion_times"][-1]:
                         self.synth_target_counter += 1
                     else:
                         finished_targets = True
@@ -234,13 +235,13 @@ class sauv_exec(object):
                 current_position = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
                 _action_completed = waypointReached(current_position, wp[0:3], 0.5)
                 if _action_completed:
-                    rospy.loginfo("Action_completed: %s", _action_completed)
+                    #rospy.loginfo("Action_completed: %s", _action_completed)
                     _action_executing = False
                     _action_completed = False
 
-            if len(wps) == 0:
-                rospy.loginfo("All Actions Completed, shutting down ...")
-                rospy.signal_shutdown("program finished")
+            #if len(wps) == 0:
+            #    rospy.loginfo("All Actions Completed, shutting down ...")
+            #    rospy.signal_shutdown("program finished")
             rospy.sleep(0.1)
 
 
