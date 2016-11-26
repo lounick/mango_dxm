@@ -241,7 +241,7 @@ class iauv_exec(object):
             rospy.sleep(0.1)
         # Insert the SAUV initial details into rethinkDB
         pilotMsg = PilotRequest()
-        pilotMsg.position = [random.randint(1, 3), random.randint(1, 3), 0, 0, 0, 0]
+        pilotMsg.position = [random.uniform(-2, 2), random.uniform(-2, 2), 0, 0, 0, 0]
         self.pilot_pub.publish(pilotMsg)
         vehicle = VehicleInfo(int(self.module_id_), self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
         self.insert_db("vehicles", vehicle)
