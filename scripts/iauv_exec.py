@@ -266,6 +266,7 @@ class iauv_exec(object):
                     current_position = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
                     _action_completed = waypointReached(current_position, wp[0:3], 0.5)
                     if _action_completed:
+                        rospy.sleep(90)
                         print("Action_completed: {0}".format(_action_completed))
                         target = TargetInfo(target_id, wp[0], wp[1], wp[2], self.module_id_, 1, rospy.get_time())
                         self.insert_db("targets", target)
