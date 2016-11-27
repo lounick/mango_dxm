@@ -164,7 +164,7 @@ def ovrp_solver(cost, start=None, finish=None, **kwargs):
     prob = pulp.LpProblem("OVRP", pulp.LpMinimize)
 
     e_vars = pulp.LpVariable.dicts("e", (cities, cities), lowBound=0, upBound=1, cat=pulp.LpBinary)
-    u_vars = pulp.LpVariable.dicts("u", cities[:], lowBound=0, upBound=len(cities)+1, cat=pulp.LpInteger)
+    u_vars = pulp.LpVariable.dicts("u", cities[:], lowBound=0, upBound=len(cities)-1, cat=pulp.LpInteger)
 
     prob += sum([e_vars[w][b] * costs[w][b] for (w, b) in routes]), "Sum_of_Tour_Costs"
 
@@ -254,6 +254,7 @@ def main():
 
     solution, cost_total = ovrp_solver(cost)
     print(cost_total)
+
     fig, ax = plot_problem(nodes, solution, cost_total)
     plt.show()
 
