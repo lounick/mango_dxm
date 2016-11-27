@@ -1,57 +1,8 @@
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import numpy as np
+import pulp
 from pulp import *
 import time
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-
-from mpl_toolkits.mplot3d import Axes3D
-
-np.set_printoptions(precision=3, suppress=True)
-
-def _set_plot_style():
-    """Set the global matplotlib using the project's default style.
-
-    Notes
-    -----
-    This configuration affects all the tests and the examples included in this package.
-    """
-    if 'bmh' in mpl.style.available:
-        mpl.style.use('bmh')
-
-    mpl.rcParams['figure.figsize'] = _get_figsize(scale=2.0)
-    #mpl.rcParams[''] = 'tight'
-
-def _get_figsize(scale=1.0):
-    """Calculate figure size using aestetic ratio.
-
-    Parameters
-    ----------
-    scale : float
-        Scaling parameter from basic aspect (6.85:4.23).
-
-    Returns
-    -------
-    figsize : tuple
-        A 2-element tuple (w, h) defining the width and height of a figure.
-
-    Examples
-    --------
-    This function is used to configure matplotlib.
-
-    >>> import numpy as np
-    >>> np.allclose(_get_figsize(1.0), (6.85, 4.23), atol=0.1)
-    True
-    """
-    fig_width_pt = 495.0                              # Get this from LaTeX using \the\textwidth
-    inches_per_pt = 1.0 / 72.27                       # Convert pt to inch
-
-    golden_mean = (np.sqrt(5.0) - 1.0) / 2.0
-
-    fig_width = fig_width_pt * inches_per_pt * scale  # width in inches
-    fig_height = fig_width * golden_mean              # height in inches
-
-    return (fig_width, fig_height)
 
 def calculate_distances(nodes):
     n = np.atleast_2d(nodes).shape[0]
@@ -62,79 +13,6 @@ def calculate_distances(nodes):
             distances[k, p] = np.linalg.norm(nodes[k, :] - nodes[p, :])
 
     return distances
-
-def plot_problem(nodes, solution, objective):
-    """Plot the results of a problem in 2D coordinates (X-Y).
-
-    Parameters
-    ----------
-    nodes
-    solution
-    objective
-
-    Returns
-    -------
-    fig: object
-        figure object
-
-    ax: object
-        axes object
-    """
-    # init plot
-    _set_plot_style()
-    fig, ax = plt.subplots()
-
-    # plot vertexes
-    ax.plot(nodes[:, 1], nodes[:, 0], 'o', ms=8, label='nodes')
-
-    # # add labels
-    # for n in xrange(len(idx)):
-    #     x, y = nodes[n, 1], nodes[n, 0]
-    #     xt, yt = x - 0.10 * np.abs(x), y - 0.10 * np.abs(y)
-    #
-    #     ax.annotate('#%d' % n, xy=(x, y), xycoords='data', xytext=(xt,yt))
-
-    # normalize solution(s)
-    indexes = []
-
-    if len(solution) > 0:
-        if type(solution[0]) == list:
-            indexes.extend(solution)
-        else:
-            indexes.append(solution)
-
-    # plot solution(s)
-    for n, idx in enumerate(indexes):
-        # route plots
-        route = nodes[idx, :]
-        ax.plot(route[:, 1], route[:, 0], '--', alpha=0.8, label='route #{}'.format(n))
-
-        # add route order
-        for k, n in enumerate(idx):
-            x, y = nodes[n, 1], nodes[n, 0]
-            xt, yt = x + 0.05 * np.abs(x), y + 0.05 * np.abs(y)
-
-            ax.annotate(str(k), xy=(x, y), xycoords='data', xytext=(xt, yt))
-
-    # adjust plot features
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    xnew =  (xlim[0] - np.abs(xlim[0] * 0.05), xlim[1] + np.abs(xlim[1] * 0.05))
-    ynew =  (ylim[0] - np.abs(ylim[0] * 0.05), ylim[1] + np.abs(ylim[1] * 0.05))
-
-    ax.set_xlim(xnew)
-    ax.set_ylim(ynew)
-
-    ax.legend(loc='best')
-    ax.xaxis.set_minor_locator(mpl.ticker.AutoMinorLocator(2))
-    ax.yaxis.set_minor_locator(mpl.ticker.AutoMinorLocator(2))
-    ax.grid(which='minor')
-
-    ax.set_xlabel('X (m)')
-    ax.set_ylabel('Y (m)')
-    ax.set_title('Problem Solution')
-
-    return fig, ax
 
 def ovrp_solver(cost, start=None, finish=None, **kwargs):
     # Number of points
@@ -203,7 +81,7 @@ def ovrp_solver(cost, start=None, finish=None, **kwargs):
 
     print("Solving problem")
     start = time.time()
-    prob.solve()
+    prob.solve(pulp.GLPK(msg=0))
     end = time.time()
     print('Solving problem', 'took', end - start, 'time')
 
@@ -232,20 +110,14 @@ def ovrp_solver(cost, start=None, finish=None, **kwargs):
     print("Total Cost of Transportation = ", prob.objective.value())
     return route, prob.objective.value()
 
+
 def main():
-    import matplotlib.pyplot as plt
-
-
     nodes = []
     nodes.append([0, 0])
 
     for i in range(1, 4):
         for j in range(-1, 2):
-            ni = i
-            nj = j
-            # ni = random.uniform(-0.5,0.5) + i
-            # nj = random.uniform(-0.5,0.5) + j
-            nodes.append([ni, nj])
+            nodes.append([i, j])
 
     nodes.append([4, 0])
     nodes = np.array(nodes)
@@ -254,10 +126,6 @@ def main():
 
     solution, cost_total = ovrp_solver(cost)
     print(cost_total)
-
-    fig, ax = plot_problem(nodes, solution, cost_total)
-    plt.show()
-
 
 if __name__ == '__main__':
     main()

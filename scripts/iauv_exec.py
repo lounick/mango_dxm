@@ -106,9 +106,9 @@ class iauv_exec(object):
         self.vehicle_positions = {}
         self.my_targets = []
         self.my_targets_ids = []
-        
+
         self.nav_count_ = 0
-        self.reset_targets_count_ = 0;
+        self.reset_targets_count_ = 0
 
         self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
         self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
@@ -134,8 +134,7 @@ class iauv_exec(object):
             self.nav_count_ = 0
 
     def update_nav(self):
-        print(type(self.module_id_))
-        print(type(int(self.module_id_)))
+        rospy.loginfo("Sending nav update: N %s E %s D %s", self._nav.position.north, self._nav.position.east, self._nav.position.depth)
         v = VehicleInfo(int(self.module_id_), self._nav.position.north, self._nav.position.east, self._nav.position.depth, 0, 0, rospy.Time.now().secs)
         r.table("vehicles").get(self.module_id_).update(v.__dict__).run(self.connection_)
         #self.scheduler_.enter(30, 1, self.update_nav, ())
@@ -188,6 +187,8 @@ class iauv_exec(object):
                 # print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
+                    rospy.loginfo("Received nav update from vehicle %s. Position N %s E %s D %s",
+                                  item['new_val']['id'], item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'])
                     self.vehicle_positions[item['new_val']['id']] = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread
@@ -205,24 +206,32 @@ class iauv_exec(object):
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     if item['new_val']['classification'] == 1:
-                        pass
+                        try:
+                            idx = self.target_ids.index(item['new_val']['id'])
+                            self.targets[idx][4] = 1
+                        except ValueError:
+                            rospy.loginfo("Unknown target classified inserting into list")
+                            self.targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
+                                            item['new_val']['vehicle_id'], item['new_val']['classification'],
+                                            item['new_val']['timestamp']])
+                            self.target_ids.append(item['new_val']['id'])
                     else:
                         self.targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
-                                         item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
+                                             item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
                         self.target_ids.append(item['new_val']['id'])
                         min_dist = 1000000
                         vid = -1
                         target_pos = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
                         for k, v in self.vehicle_positions.iteritems():
                             dist = eucledian_distance(v,target_pos)
-                            rospy.loginfo("Distance from vehicle %s with pos %s is %s", k, v, dist) 
+                            rospy.loginfo("Distance from vehicle %s with pos %s is %s", k, v, dist)
                             if dist < min_dist:
                                 min_dist = deepcopy(dist)
                                 vid = k
                         rospy.loginfo("Assigning to %s", vid)
                         if vid == self.module_id_:
                             self.my_targets.append([item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth'],
-                                         item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
+                                                    item['new_val']['vehicle_id'], item['new_val']['classification'], item['new_val']['timestamp']])
                             self.my_targets_ids.append(item['new_val']['id'])
                             self._action_executing = False
             except r.ReqlTimeoutError:
@@ -296,6 +305,7 @@ class iauv_exec(object):
                     # Check if the action/waypoint request has been completed
                     current_position = [self._nav.position.north, self._nav.position.east, self._nav.position.depth]
                     _action_completed = waypointReached(current_position, wp[0:3], 0.5)
+
                     if _action_completed:
                         rospy.sleep(90)
                         print("Action_completed: {0}".format(_action_completed))
@@ -305,6 +315,13 @@ class iauv_exec(object):
                         self.my_targets_ids.pop(0)
                         self._action_executing = False
                         _action_completed = False
+
+                    if self.targets[self.target_ids.index(target_id)][4] == 1:
+                        rospy.loginfo("Found out that the target was already classified by someone else. Dropping target.")
+                        _action_completed = False
+                        self._action_executing = False
+                        self.my_targets.pop(0)
+                        self.my_targets_ids.pop(0)
             else:
                 self.reset_targets_count_ += 1
                 if self.reset_targets_count_ > 1200:
