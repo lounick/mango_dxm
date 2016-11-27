@@ -30,7 +30,7 @@ CONFIG = {
     "start_corner": 0,
     "spacing": 5,
     "overlap": 0,
-    "synthetic_target_insertion_times": [1, 2, 3, 4, 5, 6]  #in minutes
+    "synthetic_target_insertion_times": [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5]  #in minutes
 }
 
 class VehicleInfo:
@@ -83,6 +83,7 @@ class sauv_exec(object):
         self.module_id_ = module_id
         self.db_name_ = "sunset_"+str(module_id)
 
+        self.target_pub_ = rospy.Publisher("target_info", Vector6)
         self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
         self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
         rospy.wait_for_service('db_ready')
@@ -217,12 +218,19 @@ class sauv_exec(object):
                     # self.synth_target_counter < len(CONFIG["synthetic_target_insertion_times"]):
                     # Time to insert a synthetic target into the database
                     rospy.loginfo("Inserting synth target into RethinkDB")
-                    target = TargetInfo(self.synth_target_counter, self._nav.position.north, # FIXME: Not using proper uids
-                                        self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
+                    # target = TargetInfo(self.synth_target_counter, self._nav.position.north, # FIXME: Not using proper uids
+                    #                     self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
+                    north = random.uniform(-50,50)
+                    east = random.uniform(-50,50)
+                    depth = random.uniform(1,10)
+                    target = TargetInfo(self.synth_target_counter, north, east, depth, 1, 0, rospy.Time.now().secs)
                     self.insert_db("targets", target)
 
                     # change this to the next time point for synthetic target insertion
                     #if self.synth_target_counter + 1 != len(CONFIG["synthetic_target_insertion_times"]):
+                    msg = Vector6()
+                    msg.values = [north, east, depth, 0, 0, 0]
+                    self.target_pub_.publish(msg)
                     if CONFIG["synthetic_target_insertion_times"][self.synth_target_counter] != CONFIG["synthetic_target_insertion_times"][-1]:
                         self.synth_target_counter += 1
                     else:
