@@ -22,6 +22,8 @@ from mango_dxm.srv import *
 
 import struct
 
+import ovrp_solver
+
 CONFIG = {
     "VehicleUID": 0,
     "intention": "sauv",
@@ -89,6 +91,7 @@ class iauv_exec(object):
         self.db_name_ = "sunset_"+module_id
 
         self._nav = None
+        self._action_executing = False
         self.start_time = time.time()
 
         self.connection_ = None
@@ -105,6 +108,7 @@ class iauv_exec(object):
         self.my_targets_ids = []
         
         self.nav_count_ = 0
+        self.reset_targets_count_ = 0;
 
         self.pilot_pub = rospy.Publisher("pilot/position_req", PilotRequest)
         self.nav_sub = rospy.Subscriber("nav/nav_sts", NavSts, self.navCallback)
@@ -181,7 +185,7 @@ class iauv_exec(object):
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                print(item)
+                # print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     self.vehicle_positions[item['new_val']['id']] = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
@@ -197,7 +201,7 @@ class iauv_exec(object):
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                print(item)
+                # print(item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     if item['new_val']['classification'] == 1:
@@ -223,6 +227,32 @@ class iauv_exec(object):
                             self._action_executing = False
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
+
+    def order_targets(self):
+        tmp_targets = []
+        tmp_targets.append([self._nav.position.north, self._nav.position.east, self._nav.position.depth])
+        for i in range(len(self.my_targets)):
+            tmp_targets.append([self.my_targets[i][0], self.my_targets[i][1], self.my_targets[i][2]])
+        tmp_targets.append([self._nav.position.north, self._nav.position.east, self._nav.position.depth])
+
+        n = len(tmp_targets)
+        distances = np.zeros((n, n))
+
+        for k in xrange(n):
+            for p in xrange(n):
+                distances[k, p] = eucledian_distance(tmp_targets[k], tmp_targets[p])
+
+        solution, cost_total = ovrp_solver.ovrp_solver(distances)
+
+        new_targets = []
+        new_targets_ids = []
+        for i in range(1,len(solution)-1):
+            new_targets.append(self.my_targets[solution[i]-1])
+            new_targets_ids.append(self.my_targets_ids[solution[i]-1])
+        self.my_targets = new_targets
+        self.my_targets_ids = new_targets_ids
+
+
 
     def run(self):
         self.connection_ = r.connect()
@@ -251,12 +281,13 @@ class iauv_exec(object):
         while not rospy.is_shutdown():
             if len(self.my_targets) > 0:
                 if not self._action_executing:
+                    self.order_targets()
                     # Take an action (waypoint) from the beginning of the list and send it to the pilot
                     wp = self.my_targets[0]
                     target_id = self.my_targets_ids[0]
                     self._action_executing = True
                     pilotMsg = PilotRequest()
-                    pilotMsg.position = wp
+                    pilotMsg.position = [wp[0],wp[1],wp[2],0,0,0]
                     print("Action/WP Executing: {0}".format(wp))
                     print("please wait ...")
                     self.pilot_pub.publish(pilotMsg)
@@ -274,6 +305,30 @@ class iauv_exec(object):
                         self.my_targets_ids.pop(0)
                         self._action_executing = False
                         _action_completed = False
+            else:
+                self.reset_targets_count_ += 1
+                if self.reset_targets_count_ > 1200:
+                    self.reset_targets_count_ = 0
+                    targets = r.table("targets").filter(r.row['classification'] == 0).run(self.connection_)
+                    for target in targets:
+                        item = target.fields.as_dict()
+                        min_dist = 1000000
+                        vid = -1
+                        target_pos = [item['lat'], item['lon'], item['depth']]
+                        for k, v in self.vehicle_positions.iteritems():
+                            dist = eucledian_distance(v, target_pos)
+                            rospy.loginfo("Distance from vehicle %s with pos %s is %s", k, v, dist)
+                            if dist < min_dist:
+                                min_dist = deepcopy(dist)
+                                vid = k
+                        rospy.loginfo("Assigning to %s", vid)
+                        if vid == self.module_id_:
+                            self.my_targets.append(
+                                [item['lat'], item['lon'], item['depth'],
+                                 item['vehicle_id'], item['classification'],
+                                 item['timestamp']])
+                            self.my_targets_ids.append(item['id'])
+                            self._action_executing = False
 
             rospy.sleep(0.1)
 
