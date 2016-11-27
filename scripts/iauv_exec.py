@@ -310,8 +310,8 @@ class iauv_exec(object):
                 if self.reset_targets_count_ > 1200:
                     self.reset_targets_count_ = 0
                     targets = r.table("targets").filter(r.row['classification'] == 0).run(self.connection_)
-                    for target in targets:
-                        item = target.fields.as_dict()
+                    for item in targets:
+                        #item = target.fields.as_dict()
                         min_dist = 1000000
                         vid = -1
                         target_pos = [item['lat'], item['lon'], item['depth']]

@@ -153,7 +153,7 @@ class sauv_exec(object):
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                rospy.loginfo("%s", item)
+                #rospy.loginfo("%s", item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     self.vehicle_positions[item['new_val']['id']] = [item['new_val']['lat'], item['new_val']['lon'], item['new_val']['depth']]
@@ -169,10 +169,10 @@ class sauv_exec(object):
         while self.run_threads_:
             try:
                 item = feed.next(wait=False)
-                rospy.loginfo("%s", item)
+                #rospy.loginfo("%s", item)
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
-                    rospy.loginfo("Vehicle %s classified target %s", item['new_val']['vehicle_id'], item['new_val']['id'])
+                    rospy.logerr("Vehicle %s classified target %s", item['new_val']['vehicle_id'], item['new_val']['id'])
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
 
