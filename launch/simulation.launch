@@ -2,7 +2,7 @@
 <launch>
   
   <group ns="sauv">
-    <node name="dxm_sauv" pkg="mango_dxm" type="dxm.py" args="1" output="screen" launch-prefix="xterm -e"/>
+    <node name="dxm_sauv" pkg="mango_dxm" type="dxm.py" args="1" output="screen"/>
     <include file="$(find vehicle_core)/launch/nav_sim.launch"/>
     <include file="$(find vehicle_core)/launch/pilot_sim.launch"/>
     <node name="sauv_exec" pkg="mango_dxm" type="sauv_exec.py" args="1" output="screen" launch-prefix="xterm -e"/>
@@ -12,14 +12,14 @@
     <node name="dxm_iauv" pkg="mango_dxm" type="dxm.py" args="2" output="screen"/>
     <include file="$(find vehicle_core)/launch/nav_sim.launch"/>
     <include file="$(find vehicle_core)/launch/pilot_sim.launch"/>
-    <node name="iauv_exec" pkg="mango_dxm" type="iauv_exec.py" args="2" output="log"/>
+    <node name="iauv_exec" pkg="mango_dxm" type="iauv_exec1.py" args="2" output="log" launch-prefix="xterm -e"/>
   </group>
   
   <group ns="iauv2">
     <node name="dxm_iauv" pkg="mango_dxm" type="dxm.py" args="3" output="screen"/>
     <include file="$(find vehicle_core)/launch/nav_sim.launch"/>
     <include file="$(find vehicle_core)/launch/pilot_sim.launch"/>
-    <node name="iauv_exec" pkg="mango_dxm" type="iauv_exec.py" args="3" output="log"/>
+    <node name="iauv_exec" pkg="mango_dxm" type="iauv_exec2.py" args="3" output="log" launch-prefix="xterm -e"/>
   </group>
   
 
