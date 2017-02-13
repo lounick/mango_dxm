@@ -18,6 +18,8 @@ from vehicle_interface.srv import BooleanService
 from auv_msgs.msg import NavSts
 from mango_dxm.srv import *
 
+from visualization_msgs.msg import MarkerArray, Marker
+
 import struct
 
 CONFIG = {
@@ -30,7 +32,7 @@ CONFIG = {
     "start_corner": 0,
     "spacing": 5,
     "overlap": 0,
-    "synthetic_target_insertion_times": [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5]  #in minutes
+    "synthetic_target_insertion_times": [1.5, 3.0, 4.5, 6.0]#[0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]  #in minutes
 }
 
 class VehicleInfo:
@@ -100,15 +102,49 @@ class sauv_exec(object):
 
         self.vehicle_positions = {}
 
+        self.marker_array_ = []
+        self.marker_position_ = []
+        self.marker_uids_ = []
+        self.marker_colors_ = []
+        self.color_red = [1, 0, 0, 1]
+        self.color_green = [0.000, 0.502, 0.000, 1]
+        self.color_orange = [1.000, 0.647, 0.000, 1]
+        self.vis_pub_ = rospy.Publisher("visualization_marker_array", MarkerArray, queue_size=100)
+
+    def print_markers(self):
+        markerArray = MarkerArray()
+        for i in range(len(self.marker_colors_)):
+            marker = Marker()
+            marker.header.frame_id = "/map"
+            marker.header.stamp = rospy.Time().now()
+            marker.lifetime = rospy.Time(0.1)
+            marker.ns = "sauv"
+            marker.id = i
+            marker.type = marker.SPHERE
+            marker.action = marker.ADD
+            marker.scale.x = 1.0
+            marker.scale.y = 1.0
+            marker.scale.z = 1.0
+            marker.color.r = self.marker_colors_[i][0]
+            marker.color.g = self.marker_colors_[i][1]
+            marker.color.b = self.marker_colors_[i][2]
+            marker.color.a = self.marker_colors_[i][3]
+            marker.pose.orientation.w = 1.0
+            marker.pose.position.x = self.marker_position_[i][0]
+            marker.pose.position.y = self.marker_position_[i][1]
+            marker.pose.position.z = self.marker_position_[i][2]
+            markerArray.markers.append(marker)
+        self.vis_pub_.publish(markerArray)
+
     def init_db(self):
         rospy.logerr("@@@@@@@@@@@@@@@ Waiting for DB!")
         while not self.db_server_ready():
             rospy.logerr("@@@@@@@@@@@@@@@ Waiting for DB!")
             rospy.sleep(0.1)
 
-
     def navCallback(self, msg):
         self._nav = msg
+
     def generate_lawnmower(self):
         fixes, cols = pattern_from_ned(CONFIG["lawnmower_area"], CONFIG["start_corner"],
                                        CONFIG["spacing"], CONFIG["overlap"])
@@ -173,6 +209,11 @@ class sauv_exec(object):
                 # Process item
                 if item['new_val']['id'] != self.last_inserted_id_ or item['new_val']['timestamp'] != self.last_timestamp_:
                     rospy.logerr("Vehicle %s classified target %s", item['new_val']['vehicle_id'], item['new_val']['id'])
+                    idx = self.marker_uids_.index(int(item['new_val']['id']))
+                    if int(item['new_val']['vehicle_id']) == 2:
+                        self.marker_colors_[idx] = self.color_orange
+                    elif int(item['new_val']['vehicle_id']) == 3:
+                        self.marker_colors_[idx] = self.color_green
             except r.ReqlTimeoutError:
                 time.sleep(0.01)  # Sleep thread for 10ms
 
@@ -189,6 +230,47 @@ class sauv_exec(object):
         self.UID_counter = 0
         self.synth_target_counter = 0
         finished_targets = False
+        #BEST
+        # self.synth_targets =[(41.23214085671712, -27.201950413623123, 2.507601851990801),
+        #                      (5.7165853992716364, 28.13035108084523, 3.2569861341176365),
+        #                      (-22.921098870304235, -27.35763420616464, 5.93929430044889),
+        #                      (28.791543007698465, 37.455757992696704, 5.3225382421725325),
+        #                      (-26.175709934212932, -36.401480691211496, 5.550885565126501),
+        #                      (27.076177241433314, -41.184145119401194, 1.4703737342842098),
+        #                      (-16.70984410691139, -23.847370956216107, 7.788646903251107),
+        #                      (23.81731236684422, 1.3440963907671133, 5.307472651327279),
+        #                      (46.814325120138676, -34.4773656609357, 2.476461381772065),
+        #                      (3.8778329798072946, -25.708114420837724, 4.587886340854672)]
+        #WORST
+        # self.synth_targets = [(30.329564123281358, 28.14863010466327, 1.2858447488292848),
+        #                       (26.521784945074444, 45.77654364367736, 3.8838172917747245),
+        #                       (36.932781852488006, -31.915917248663995, 7.937098691329582),
+        #                       (-25.701251788032277, 40.307245254273994, 5.033835962400384),
+        #                       (-32.44150586223431, 22.839350609725983, 2.4313900618466375),
+        #                       (-10.14252818801802, 46.80607146932462, 5.349518735578121),
+        #                       (13.35717296722597, 28.22779351109702, 7.062150750343796),
+        #                       (4.549645213892937, 37.70218387616838, 6.977401746766278),
+        #                       (5.875575667200863, 13.256456241209321, 7.267109179287102),
+        #                       (-27.292285165833707, 34.13956385187832, 9.059700779397224)]
+        #MEDIUM
+        # self.synth_targets = [(-10.224606425392999, -30.138106430819345, 7.596271732924227),
+        # (-23.362031552619676, -47.51655539856652, 6.686983265656394),
+        # (-28.901440987732563, 36.204064699048146, 7.177438941597014),
+        # (-23.774913980125344, -14.093801419700029, 8.968190900167556),
+        # (-21.467264097947037, -14.348123052658458, 6.70399219156594),
+        # (-32.934170653480095, 32.688030559395074, 6.27463489840251),
+        # (-0.813063922337335, 8.18106433834275, 4.474609531919449),
+        # (-13.289516561288458, -31.564176955655643, 8.754248030997406),
+        # (19.139010260773745, -8.599469956397662, 9.110762108322994),
+        # (22.89877239426154, 27.520424548061357, 5.28889078851552)]
+
+        self.synth_targets = []
+        filename = "/home/nick/src/random_target_generator/10targets10.txt"
+        f = open(filename, 'r')
+        for line in f:
+            n,e,d = line.split(" ")
+            print((float(n),float(e),float(d)))
+            self.synth_targets.append((float(n),float(e),float(d)))
 
         # Insert the SAUV initial details into rethinkDB
         vehicle = VehicleInfo(self.module_id_,0,0,0,0,0,rospy.Time.now().secs)
@@ -200,7 +282,10 @@ class sauv_exec(object):
             print("@@@@@@@@@@@@@@@ Waiting for NAV!")
             rospy.sleep(0.1)
         self.pilot_switch(True)
+        rospy.sleep(30)
+        ma = MarkerArray()
         while not rospy.is_shutdown():
+            self.print_markers()
             if len(wps) > 0 and not _action_executing:
                 # Take an action (waypoint) from the beginning of the list and send it to the pilot
                 wp = wps.pop(0)
@@ -218,19 +303,27 @@ class sauv_exec(object):
                     # self.synth_target_counter < len(CONFIG["synthetic_target_insertion_times"]):
                     # Time to insert a synthetic target into the database
                     rospy.loginfo("Inserting synth target into RethinkDB")
-                    # target = TargetInfo(self.synth_target_counter, self._nav.position.north, # FIXME: Not using proper uids
-                    #                     self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
-                    north = random.uniform(-50,50)
-                    east = random.uniform(-50,50)
-                    depth = random.uniform(1,10)
-                    target = TargetInfo(self.synth_target_counter, north, east, depth, 1, 0, rospy.Time.now().secs)
+                    target = TargetInfo(self.synth_target_counter+10, self._nav.position.north, # FIXME: Not using proper uids
+                                        self._nav.position.east, 10, 1, 0, rospy.Time.now().secs)
+
+                    self.marker_position_.append([self._nav.position.north, -self._nav.position.east, -10])
+                    self.marker_colors_.append(self.color_red)
+                    self.marker_uids_.append(self.synth_target_counter+10)
+
+                    # north = random.uniform(-50,50)
+                    # east = random.uniform(-50,50)
+                    # depth = random.uniform(1,10)
+                    # north = self.synth_targets[self.synth_target_counter][0]
+                    # east = self.synth_targets[self.synth_target_counter][1]
+                    # depth = self.synth_targets[self.synth_target_counter][2]
+                    # target = TargetInfo(self.synth_target_counter+10, north, east, depth, 1, 0, rospy.Time.now().secs)
                     self.insert_db("targets", target)
 
                     # change this to the next time point for synthetic target insertion
                     #if self.synth_target_counter + 1 != len(CONFIG["synthetic_target_insertion_times"]):
-                    msg = Vector6()
-                    msg.values = [north, east, depth, 0, 0, 0]
-                    self.target_pub_.publish(msg)
+                    # msg = Vector6()
+                    # msg.values = [north, east, depth, 0, 0, 0]
+                    # self.target_pub_.publish(msg)
                     if CONFIG["synthetic_target_insertion_times"][self.synth_target_counter] != CONFIG["synthetic_target_insertion_times"][-1]:
                         self.synth_target_counter += 1
                     else:
