@@ -72,7 +72,6 @@ class Dxm:
         self.rate_ = rospy.Rate(10)  # 10hz
         # Initialise the database by connecting and dropping any existing tables
 
-        # r.set_loop_type("tornado")
         # self.connection = r.connect(host='localhost', port=28015)
         self.connection_ = None
         self.run_threads_ = True
@@ -179,7 +178,7 @@ class Dxm:
     def process_db_out(self):
         try:
             item = self.db_out_.get(block=False)
-            self.candidates_[item[0]] = item[1]
+            self.candidates_[item[0]] = {'priority': item[1], 'acked': []}
             self.db_out_.task_done()
         except Empty:
             pass
@@ -223,10 +222,10 @@ class Dxm:
                 # Check if we should insert it again into the queue
                 if v['id'] not in self.candidates_:
                     rospy.loginfo("Message failed to transmit. Rescheduling transmission.")
-                    to_remove.append(k)
-                    self.candidates_[v['id']] = v['priority']
+                    self.candidates_[v['id']] = {'priority': v['priority'], 'acked': v['acked']}
                 else:
                     rospy.loginfo("Message failed to transmit. Has obsolete info. Discarding.")
+                to_remove.append(k)
         for k in to_remove:
             del self.transmitted_[k]
 
@@ -247,7 +246,10 @@ class Dxm:
         # It is an ack for a message we sent. Add this to acked messages.
         rospy.loginfo("Got ack for message %s from address %s", acked_msg_id, address)
         if acked_msg_id in self.transmitted_:
-            self.transmitted_[acked_msg_id]['acked'].append(address)
+            try:
+                self.transmitted_[acked_msg_id]['acked'].index(address)
+            except ValueError:
+                self.transmitted_[acked_msg_id]['acked'].append(address)
             if set(self.transmitted_[acked_msg_id]['sent']).issubset(set(self.transmitted_[acked_msg_id]['acked'])):
                 # Message was succsessfully received. Process that.
                 self.finished_[acked_msg_id] = self.transmitted_[acked_msg_id]
@@ -267,8 +269,11 @@ class Dxm:
                     candidate_v = 0
                     candidate_k = 0
                     for k in self.candidates_.iterkeys():
-                        v = self.candidates_[k]
-                        if v >= candidate_v:
+                        v = self.candidates_[k]['priority']
+                        if v > candidate_v:
+                            candidate_v = v
+                            candidate_k = k
+                        elif v == candidate_v and len(self.candidates_[k]['acked']) > len(self.candidates_[candidate_k]['acked']):
                             candidate_v = v
                             candidate_k = k
                     payload = struct.pack('!L', self.msg_count_)
@@ -284,9 +289,11 @@ class Dxm:
                     msg.node_address = 0
                     msg.payload = payload
                     print("PAYLOAD LENGTH:" + str(len(payload)))
+                    rospy.logwarn("Transmitting message %s %s %s", self.msg_count_, candidate_k, candidate_v)
+                    self.transmitted_[self.msg_count_] = {'TTL': rospy.Time.now().secs+self.ttl_, 'id': candidate_k,
+                                                          'priority': candidate_v, 'sent': recipients,
+                                                          'acked': self.candidates_[candidate_k]['acked']}
                     del self.candidates_[candidate_k]
-                    rospy.loginfo("Transmitting message %s", self.msg_count_)
-                    self.transmitted_[self.msg_count_] = {'TTL':rospy.Time.now().secs+self.ttl_, 'id':candidate_k, 'priority':candidate_v, 'sent':recipients, 'acked':[]}
                     self.msg_flag_ = True
                     self.msg_pub_.publish(msg)
                     self.msg_count_ += 1
@@ -309,7 +316,8 @@ class Dxm:
         tmp_ts = self.last_timestamp_
         self.last_inserted_id_ = item.id
         self.last_timestamp_ = item.timestamp
-        if r.table(table).get(item.id).run(self.connection_) is None:
+        existing_item = r.table(table).get(item.id).run(self.connection_)
+        if existing_item is None:
             # This vehicle doesn't exist. Insert into DB.
             res = r.table(table).insert(item.__dict__).run(self.connection_)
             if res['errors'] != 0:
@@ -318,11 +326,16 @@ class Dxm:
                 rospy.logerr("Error inserting in table: " + table + ". With error: " + res['first_error'])
         else:
             # Vehicle exists in DB. Just update its info.
-            res = r.table(table).get(item.id).update(item.__dict__).run(self.connection_)
-            if res['errors'] != 0:
+            if existing_item["timestamp"] < item.timestamp:
+                res = r.table(table).get(item.id).update(item.__dict__).run(self.connection_)
+                if res['errors'] != 0:
+                    self.last_inserted_id_ = tmp_id
+                    self.last_timestamp_ = tmp_ts
+                    rospy.logerr("Error updating in table: " + table + ". With error: " + res['first_error'])
+            else:
                 self.last_inserted_id_ = tmp_id
                 self.last_timestamp_ = tmp_ts
-                rospy.logerr("Error updating in table: " + table + ". With error: " + res['first_error'])
+                rospy.logwarn(self.db_name_ + ": Item contained outdated info. Discarding. {0} {1}".format(existing_item["timestamp"], item.timestamp))
 
     def rethink_vehicle_cb(self):
         # We have a vehicle update. Queue it for transmission
