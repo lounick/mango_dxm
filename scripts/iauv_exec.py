@@ -297,8 +297,8 @@ class iauv_exec(object):
                     self._action_executing = True
                     pilotMsg = PilotRequest()
                     pilotMsg.position = [wp[0],wp[1],wp[2],0,0,0]
-                    print("Action/WP Executing: {0}".format(wp))
-                    print("please wait ...")
+                    rospy.logerr("Action/WP Executing: {0}".format(wp))
+                    rospy.logerr("please wait ...")
                     self.pilot_pub.publish(pilotMsg)
                 else:
                     # Do some other stuff to pass the time whilst checking to see if the action has completed yet
@@ -307,21 +307,23 @@ class iauv_exec(object):
                     _action_completed = waypointReached(current_position, wp[0:3], 0.5)
 
                     if _action_completed:
+                        rospy.logerr("Waypoint reached. Inspecting")
                         rospy.sleep(90)
-                        print("Action_completed: {0}".format(_action_completed))
+                        rospy.logerr("Action_completed: {0}".format(_action_completed))
                         target = TargetInfo(target_id, wp[0], wp[1], wp[2], self.module_id_, 1, rospy.get_time())
                         self.insert_db("targets", target)
                         self.my_targets.pop(0)
                         self.my_targets_ids.pop(0)
+                        self.targets[self.target_ids.index(target_id)][4] = 1
                         self._action_executing = False
                         _action_completed = False
-
-                    if self.targets[self.target_ids.index(target_id)][4] == 1:
-                        rospy.loginfo("Found out that the target was already classified by someone else. Dropping target.")
-                        _action_completed = False
-                        self._action_executing = False
-                        self.my_targets.pop(0)
-                        self.my_targets_ids.pop(0)
+                    else:
+                        if self.targets[self.target_ids.index(target_id)][4] == 1:
+                            rospy.loginfo("Found out that the target was already classified by someone else. Dropping target.")
+                            _action_completed = False
+                            self._action_executing = False
+                            self.my_targets.pop(0)
+                            self.my_targets_ids.pop(0)
             else:
                 self.reset_targets_count_ += 1
                 if self.reset_targets_count_ > 1200:
