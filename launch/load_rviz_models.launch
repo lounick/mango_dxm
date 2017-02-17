@@ -1,0 +1,63 @@
+<launch>
+
+    <!-- robot #1 -->
+    <group ns="0">
+        <!-- publish the geometry of the robot -->
+        <!--use join_state and kinematic layout to publish full transform tree to tf-->
+        <param name="robot_description" command="cat $(find vehicle_core)/data/sauv.urdf"/>
+        <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" output="log"/>
+    </group>
+
+    <!-- robot #2 -->
+    <group ns="1">
+
+        <!-- publish the geometry of the robot -->
+        <!--use join_state and kinematic layout to publish full transform tree to tf-->
+        <param name="robot_description" command="cat $(find vehicle_core)/data/iauv.urdf"/>
+        <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" output="log"/>
+    </group>
+
+    <!--<group ns="2">-->
+
+        <!-- publish the geometry of the robot -->
+        <!--use join_state and kinematic layout to publish full transform tree to tf-->
+        <param name="robot_description" command="cat $(find vehicle_core)/data/U-CAT.MANGO.rviz.urdf"/>
+        <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" output="log"/>
+        <node pkg="tf" type="static_transform_publisher" name="sonar_b"
+        args="-0.28 0 0 3.14159 0 0 base_link sonar_b 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_ff"
+        args="0.28 0 0 0 0 0 base_link sonar_ff 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_fl"
+        args="0.263 0.057 0 0.559 0 0 base_link sonar_fl 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_fr"
+        args="0.263 -0.057 0 -0.559 0 0 base_link sonar_fr 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_fu"
+        args="0.2 0 0.1 0 -1.57 0 base_link sonar_fu 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_fd"
+        args="-0.2 0 -0.1 0 1.57 0 base_link sonar_fd 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_l"
+        args="0 0.165 0 1.57 0 0 base_link sonar_l 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="sonar_r"
+        args="0 -0.165 0 -1.57 0 0 base_link sonar_r 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="frontrightflipper"
+        args="0.226 -0.096 0 -2.61799388 3.14159 0 base_link frontrightflipper 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="backrightflipper"
+        args="-0.226 -0.096 0 2.61799388 3.14159 0 base_link backrightflipper 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="backleftflipper"
+        args="-0.226 0.096 0 0.523598776 0 0 base_link backleftflipper 100"/>
+
+        <node pkg="tf" type="static_transform_publisher" name="frontleftflipper"
+        args="0.226 0.096 0 -0.523598776 0 0 base_link frontleftflipper 100"/>
+    <!--</group>-->
+
+</launch>
